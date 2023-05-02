@@ -24,6 +24,10 @@ use std::ops::Not;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use bdk::descriptor::{DescriptorError, Segwitv0};
+use bdk::keys::{DerivableKey, IntoDescriptorKey};
+use bdk::template::{DescriptorTemplate, DescriptorTemplateOut, P2Wpkh};
+use bitcoin::util::bip32;
 use tokio::sync::{watch, Mutex};
 
 const SLED_TREE_NAME: &str = "default_tree";
@@ -36,6 +40,53 @@ const DUST_AMOUNT: u64 = 546;
 
 const WALLET: &str = "wallet";
 const WALLET_OLD: &str = "wallet-old";
+
+pub(super) fn make_bip84_private<K: DerivableKey<Segwitv0>>(
+    bip: u32,
+    key: K,
+    keychain: KeychainKind,
+    network: Network,
+) -> Result<impl IntoDescriptorKey<Segwitv0>, DescriptorError> {
+    let mut derivation_path = Vec::with_capacity(4);
+
+    // m / bip' / network' / 0' / keychain / address idx
+    derivation_path.push(bip32::ChildNumber::from_hardened_idx(bip)?);
+
+    match network {
+        Network::Bitcoin => {
+            derivation_path.push(bip32::ChildNumber::from_hardened_idx(0)?);
+        }
+        _ => {
+            derivation_path.push(bip32::ChildNumber::from_hardened_idx(1)?);
+        }
+    }
+    // 2147483644 = atomic-swaps
+    // 2147483645 = premix
+    // 2147483646 = postmix
+    // 2147483647 = ricochet
+    derivation_path.push(bip32::ChildNumber::from_hardened_idx(2147483644)?);
+
+    match keychain {
+        KeychainKind::External => {
+            derivation_path.push(bip32::ChildNumber::from_normal_idx(0)?)
+        }
+        KeychainKind::Internal => {
+            derivation_path.push(bip32::ChildNumber::from_normal_idx(1)?)
+        }
+    };
+
+    let derivation_path: bip32::DerivationPath = derivation_path.into();
+
+    Ok((key, derivation_path))
+}
+
+pub struct Bip84Samourai<K: DerivableKey<Segwitv0>>(pub K, pub KeychainKind);
+
+impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip84Samourai<K> {
+    fn build(self, network: Network) -> Result<DescriptorTemplateOut, DescriptorError> {
+        P2Wpkh(make_bip84_private(84, self.0, self.1, network)?).build(network)
+    }
+}
 
 pub struct Wallet<D = Tree, C = Client> {
     client: Arc<Mutex<C>>,
@@ -60,8 +111,8 @@ impl Wallet {
         let network = env_config.bitcoin_network;
 
         let wallet = match bdk::Wallet::new(
-            bdk::template::Bip84(xprivkey, KeychainKind::External),
-            Some(bdk::template::Bip84(xprivkey, KeychainKind::Internal)),
+            Bip84Samourai(xprivkey, KeychainKind::External),
+            Some(Bip84Samourai(xprivkey, KeychainKind::Internal)),
             network,
             database,
         ) {

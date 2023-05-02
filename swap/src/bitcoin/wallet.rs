@@ -6,7 +6,7 @@ use ::bitcoin::Txid;
 use anyhow::{bail, Context, Result};
 use bdk::blockchain::{Blockchain, ElectrumBlockchain, GetTx};
 use bdk::database::BatchDatabase;
-use bdk::electrum_client::{ElectrumApi, GetHistoryRes};
+use bdk::electrum_client::{ElectrumApi, GetHistoryRes, Socks5Config};
 use bdk::sled::Tree;
 use bdk::wallet::export::FullyNodedExport;
 use bdk::wallet::AddressIndex;
@@ -726,6 +726,7 @@ impl Client {
     fn new(electrum_rpc_url: Url, interval: Duration) -> Result<Self> {
         let config = bdk::electrum_client::ConfigBuilder::default()
             .retry(5)
+            .socks5(Option::from(Socks5Config::new("127.0.0.1:9050"))) // use Tor with the Electrum client
             .build();
         let electrum = bdk::electrum_client::Client::from_config(electrum_rpc_url.as_str(), config)
             .context("Failed to initialize Electrum RPC client")?;

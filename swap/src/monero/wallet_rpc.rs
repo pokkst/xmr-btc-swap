@@ -4,10 +4,11 @@ use big_bytes::BigByte;
 use futures::{StreamExt, TryStreamExt};
 use monero_rpc::wallet::{Client, MoneroWalletRpc as _};
 use reqwest::header::CONTENT_LENGTH;
-use reqwest::Url;
+use reqwest::{IntoUrl, Proxy, Response, Url};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::ptr::null;
 use tokio::fs::{remove_file, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
@@ -61,8 +62,12 @@ pub struct WalletRpc {
     working_dir: PathBuf,
 }
 
+pub async fn get_tor<T: IntoUrl>(url: T) -> reqwest::Result<Response> {
+    reqwest::Client::builder().proxy(Proxy::https("socks5://127.0.0.1:9050").unwrap()).build()?.get(url).send().await
+}
+
 impl WalletRpc {
-    pub async fn new(working_dir: impl AsRef<Path>) -> Result<WalletRpc> {
+    pub async fn new(working_dir: impl AsRef<Path>, use_tor: bool) -> Result<WalletRpc> {
         let working_dir = working_dir.as_ref();
 
         if !working_dir.exists() {
@@ -102,7 +107,12 @@ impl WalletRpc {
                 .open(monero_wallet_rpc.archive_path())
                 .await?;
 
-            let response = reqwest::get(DOWNLOAD_URL).await?;
+            let mut response;
+            if use_tor {
+                response = get_tor(DOWNLOAD_URL).await?;
+            } else {
+                response = reqwest::get(DOWNLOAD_URL).await?;
+            };
 
             let content_length = response.headers()[CONTENT_LENGTH]
                 .to_str()

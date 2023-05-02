@@ -87,7 +87,7 @@ async fn main() -> Result<()> {
             )
             .await?;
             let (monero_wallet, _process) =
-                init_monero_wallet(data_dir, monero_daemon_address, env_config).await?;
+                init_monero_wallet(data_dir, monero_daemon_address, false, env_config).await?;
             let bitcoin_wallet = Arc::new(bitcoin_wallet);
             let seller_peer_id = seller
                 .extract_peer_id()
@@ -277,7 +277,7 @@ async fn main() -> Result<()> {
             )
             .await?;
             let (monero_wallet, _process) =
-                init_monero_wallet(data_dir, monero_daemon_address, env_config).await?;
+                init_monero_wallet(data_dir, monero_daemon_address, false, env_config).await?;
             let bitcoin_wallet = Arc::new(bitcoin_wallet);
 
             let seller_peer_id = db.get_peer_id(swap_id).await?;
@@ -523,13 +523,14 @@ async fn init_bitcoin_wallet(
 async fn init_monero_wallet(
     data_dir: PathBuf,
     monero_daemon_address: String,
+    use_tor: bool,
     env_config: Config,
 ) -> Result<(monero::Wallet, monero::WalletRpcProcess)> {
     let network = env_config.monero_network;
 
     const MONERO_BLOCKCHAIN_MONITORING_WALLET_NAME: &str = "swap-tool-blockchain-monitoring-wallet";
 
-    let monero_wallet_rpc = monero::WalletRpc::new(data_dir.join("monero")).await?;
+    let monero_wallet_rpc = monero::WalletRpc::new(data_dir.join("monero"), false).await?;
 
     let monero_wallet_rpc_process = monero_wallet_rpc
         .run(network, monero_daemon_address.as_str())

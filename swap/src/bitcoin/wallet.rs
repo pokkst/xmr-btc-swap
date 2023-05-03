@@ -60,11 +60,12 @@ pub(super) fn make_bip84_private<K: DerivableKey<Segwitv0>>(
             derivation_path.push(bip32::ChildNumber::from_hardened_idx(1)?);
         }
     }
-    // 2147483644 = atomic-swaps
+    // 2147483643 = atomic-swaps
+    // 2147483644 = bad-bank
     // 2147483645 = premix
     // 2147483646 = postmix
     // 2147483647 = ricochet
-    derivation_path.push(bip32::ChildNumber::from_hardened_idx(2147483644)?);
+    derivation_path.push(bip32::ChildNumber::from_hardened_idx(2147483643)?);
 
     match keychain {
         KeychainKind::External => {

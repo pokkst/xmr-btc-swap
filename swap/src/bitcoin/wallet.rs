@@ -396,6 +396,18 @@ where
         Ok(address)
     }
 
+    pub async fn new_change_address(&self) -> Result<Address> {
+        let address = self
+            .wallet
+            .lock()
+            .await
+            .get_internal_address(AddressIndex::New)
+            .context("Failed to get new Bitcoin address")?
+            .address;
+
+        Ok(address)
+    }
+
     pub async fn transaction_fee(&self, txid: Txid) -> Result<Amount> {
         let fees = self
             .wallet

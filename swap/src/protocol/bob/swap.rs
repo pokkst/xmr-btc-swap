@@ -162,7 +162,7 @@ async fn next_state(
                 select! {
                     received_xmr = monero_wallet.watch_for_transfer(watch_request) => {
                         match received_xmr {
-                            Ok(()) => BobState::XmrLocked(state.xmr_locked(monero_wallet_restore_blockheight)),
+                            Ok(()) => BobState::XmrLocked(state.xmr_locked(monero_wallet_restore_blockheight), lock_transfer_proof.tx_hash().clone()),
                             Err(monero::InsufficientFunds { expected, actual }) => {
                                 tracing::warn!(%expected, %actual, "Insufficient Monero have been locked!");
                                 tracing::info!(timelock = %state.cancel_timelock, "Waiting for cancel timelock to expire");
@@ -182,7 +182,7 @@ async fn next_state(
                 BobState::CancelTimelockExpired(state.cancel())
             }
         }
-        BobState::XmrLocked(state) => {
+        BobState::XmrLocked { state4, xmr_lock_txid } => {
             let tx_lock_status = bitcoin_wallet.subscribe_to(state.tx_lock.clone()).await;
 
             if let ExpiredTimelocks::None = state.expired_timelock(bitcoin_wallet).await? {
@@ -257,6 +257,7 @@ async fn next_state(
 
             BobState::XmrRedeemed {
                 tx_lock_id: state.tx_lock_id(),
+                xmr_redeem_txid: tx_hashes.get(0).unwrap().clone()
             }
         }
         BobState::CancelTimelockExpired(state4) => {
@@ -289,6 +290,6 @@ async fn next_state(
         BobState::BtcRefunded(state4) => BobState::BtcRefunded(state4),
         BobState::BtcPunished { tx_lock_id } => BobState::BtcPunished { tx_lock_id },
         BobState::SafelyAborted => BobState::SafelyAborted,
-        BobState::XmrRedeemed { tx_lock_id } => BobState::XmrRedeemed { tx_lock_id },
+        BobState::XmrRedeemed { tx_lock_id, xmr_redeem_txid } => BobState::XmrRedeemed { tx_lock_id, xmr_redeem_txid },
     })
 }

@@ -745,7 +745,7 @@ impl TestContext {
     async fn bob_redeemed_btc_balance(&self, state: BobState) -> Result<bitcoin::Amount> {
         self.bob_bitcoin_wallet.sync().await?;
 
-        let lock_tx_id = if let BobState::XmrRedeemed { tx_lock_id } = state {
+        let lock_tx_id = if let BobState::XmrRedeemed { tx_lock_id, xmr_redeem_txid } = state {
             tx_lock_id
         } else {
             bail!("Bob in not in xmr redeemed state: {:?}", state);
@@ -986,7 +986,7 @@ pub mod bob_run_until {
     }
 
     pub fn is_xmr_locked(state: &BobState) -> bool {
-        matches!(state, BobState::XmrLocked(..))
+        matches!(state, BobState::XmrLocked { .. })
     }
 
     pub fn is_encsig_sent(state: &BobState) -> bool {

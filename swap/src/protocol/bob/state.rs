@@ -65,7 +65,7 @@ impl fmt::Display for BobState {
             BobState::XmrLockProofReceived { .. } => {
                 write!(f, "XMR lock transaction transfer proof received")
             }
-            BobState::XmrLocked(..) => write!(f, "xmr is locked"),
+            BobState::XmrLocked { .. } => write!(f, "xmr is locked"),
             BobState::EncSigSent(..) => write!(f, "encrypted signature is sent"),
             BobState::BtcRedeemed(..) => write!(f, "btc is redeemed"),
             BobState::CancelTimelockExpired(..) => write!(f, "cancel timelock is expired"),

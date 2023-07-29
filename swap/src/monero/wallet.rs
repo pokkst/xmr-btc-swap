@@ -1,7 +1,5 @@
 use crate::env::Config;
-use crate::monero::{
-    Amount, InsufficientFunds, PrivateViewKey, PublicViewKey, TransferProof, TxHash,
-};
+use crate::monero::{Amount, InsufficientFunds, PrivateViewKey, PublicViewKey, TransferProof, TxHash};
 use ::monero::{Address, Network, PrivateKey, PublicKey};
 use anyhow::{Context, Result};
 use monero_rpc::wallet::{BlockHeight, MoneroWalletRpc as _, Refreshed};

@@ -206,7 +206,7 @@ impl Wallet {
         ))
     }
 
-    pub async fn watch_for_transfer(&self, request: WatchRequest) -> Result<(), InsufficientFunds> {
+    pub async fn watch_for_transfer(&self, request: WatchRequest) -> Result<TxHash, InsufficientFunds> {
         let WatchRequest {
             conf_target,
             public_view_key,
@@ -238,7 +238,7 @@ impl Wallet {
         )
         .await?;
 
-        Ok(())
+        Ok(txid)
     }
 
     pub async fn sweep_all(&self, address: Address) -> Result<Vec<TxHash>> {

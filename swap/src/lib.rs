@@ -36,3 +36,4 @@ mod monero_ext;
 
 #[cfg(test)]
 mod proptest;
+mod util;

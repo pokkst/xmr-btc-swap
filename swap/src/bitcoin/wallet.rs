@@ -90,7 +90,7 @@ impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip84Samourai<K> {
 }
 
 pub struct Wallet<D = Tree, C = Client> {
-    client: Arc<Mutex<C>>,
+    pub client: Arc<Mutex<C>>,
     wallet: Arc<Mutex<bdk::Wallet<D>>>,
     finality_confirmations: u32,
     network: Network,
@@ -820,7 +820,7 @@ impl Client {
         })
     }
 
-    fn blockchain(&self) -> &ElectrumBlockchain {
+    pub fn blockchain(&self) -> &ElectrumBlockchain {
         &self.blockchain
     }
 

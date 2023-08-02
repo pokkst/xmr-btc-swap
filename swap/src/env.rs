@@ -46,7 +46,7 @@ pub struct Regtest;
 impl GetConfig for Mainnet {
     fn get_config() -> Config {
         Config {
-            bitcoin_lock_mempool_timeout: 3.std_minutes(),
+            bitcoin_lock_mempool_timeout: 10.std_minutes(),
             bitcoin_lock_confirmed_timeout: 2.std_hours(),
             bitcoin_finality_confirmations: 1,
             bitcoin_avg_block_time: 10.std_minutes(),
@@ -63,8 +63,8 @@ impl GetConfig for Mainnet {
 impl GetConfig for Testnet {
     fn get_config() -> Config {
         Config {
-            bitcoin_lock_mempool_timeout: 3.std_minutes(),
-            bitcoin_lock_confirmed_timeout: 1.std_hours(),
+            bitcoin_lock_mempool_timeout: 10.std_minutes(),
+            bitcoin_lock_confirmed_timeout: 2.std_hours(),
             bitcoin_finality_confirmations: 1,
             bitcoin_avg_block_time: 10.std_minutes(),
             bitcoin_cancel_timelock: CancelTimelock::new(12),

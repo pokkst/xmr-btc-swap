@@ -367,7 +367,7 @@ async fn wait_for_confirmations<C: wallet::MoneroWalletRpc<reqwest::Client> + Sy
 }
 
 
-async fn wait_for_confs<C: wallet::MoneroWalletRpc<reqwest::Client> + Sync>(
+pub async fn wait_for_confs<C: wallet::MoneroWalletRpc<reqwest::Client> + Sync>(
     env: Option<&JNIEnv<'_>>,
     client: &Mutex<C>,
     transfer_proof: TransferProof,

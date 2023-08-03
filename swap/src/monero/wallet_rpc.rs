@@ -149,13 +149,12 @@ impl WalletRpc {
                 // file is compressed approx 3:1 in bz format
                 let total = 3 * content_length;
                 let percent = 100 * received as u64 / total;
-                if env.is_some() {
-                    util::on_xmr_rpc_download_progress(env.unwrap(), percent);
-                }
-
-                if percent != notified && percent % 10 == 0 {
+                if percent != notified && percent % 3 == 0 {
                     tracing::debug!("{}%", percent);
                     notified = percent;
+                    if env.is_some() {
+                        util::on_xmr_rpc_download_progress(env.unwrap(), percent);
+                    }
                 }
                 file.write_all(&bytes).await?;
             }

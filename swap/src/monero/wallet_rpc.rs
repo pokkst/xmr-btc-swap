@@ -8,12 +8,13 @@ use reqwest::{IntoUrl, Proxy, Response, Url};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::ptr::null;
+use jni::JNIEnv;
 use tokio::fs::{remove_file, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio_util::codec::{BytesCodec, FramedRead};
 use tokio_util::io::StreamReader;
+use crate::util;
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 compile_error!("unsupported operating system");
@@ -67,7 +68,7 @@ pub async fn get_tor<T: IntoUrl>(url: T) -> reqwest::Result<Response> {
 }
 
 impl WalletRpc {
-    pub async fn new(working_dir: impl AsRef<Path>, use_tor: bool) -> Result<WalletRpc> {
+    pub async fn new(env: Option<&JNIEnv<'_>>, working_dir: impl AsRef<Path>, use_tor: bool) -> Result<WalletRpc> {
         let working_dir = working_dir.as_ref();
 
         if !working_dir.exists() {
@@ -148,6 +149,10 @@ impl WalletRpc {
                 // file is compressed approx 3:1 in bz format
                 let total = 3 * content_length;
                 let percent = 100 * received as u64 / total;
+                if env.is_some() {
+                    util::on_xmr_rpc_download_progress(env.unwrap(), percent);
+                }
+
                 if percent != notified && percent % 10 == 0 {
                     tracing::debug!("{}%", percent);
                     notified = percent;

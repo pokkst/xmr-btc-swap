@@ -530,7 +530,7 @@ async fn init_monero_wallet(
 
     const MONERO_BLOCKCHAIN_MONITORING_WALLET_NAME: &str = "swap-tool-blockchain-monitoring-wallet";
 
-    let monero_wallet_rpc = monero::WalletRpc::new(data_dir.join("monero"), false).await?;
+    let monero_wallet_rpc = monero::WalletRpc::new(None, data_dir.join("monero"), false).await?;
 
     let monero_wallet_rpc_process = monero_wallet_rpc
         .run(network, monero_daemon_address.as_str())

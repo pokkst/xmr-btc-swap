@@ -11,9 +11,24 @@ pub(crate) fn on_xmr_lock_confirmation(env: &JNIEnv, txid: String, confirmations
     }
 }
 
+pub(crate) fn on_xmr_rpc_download_progress(env: &JNIEnv, pct: u64) {
+    let listener = get_rpc_download_listener(&env);
+    let percent = JValue::from(pct.to_i64().expect("Failed to get percent int64"));
+    if let JValue::Object(listener) = listener {
+        let result = env.call_method(listener, "onXmrRpcDownloadProgress", "(J)V", &[percent]);
+    }
+}
+
 pub(crate) fn get_swap_listener<'a>(env: &'a JNIEnv<'a>) -> JValue<'a> {
     let controller = env
         .find_class("swap/gui/SwapsController")
         .expect("Failed to load the target class");
     env.get_static_field(controller, "swapListener", "Lswap/lib/SwapListener;").unwrap()
+}
+
+pub(crate) fn get_rpc_download_listener<'a>(env: &'a JNIEnv<'a>) -> JValue<'a> {
+    let controller = env
+        .find_class("swap/gui/PairingController")
+        .expect("Failed to load the target class");
+    env.get_static_field(controller, "rpcDownloadListener", "Lswap/lib/RpcDownloadListener;").unwrap()
 }

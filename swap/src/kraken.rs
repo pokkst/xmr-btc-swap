@@ -49,7 +49,7 @@ pub fn connect(price_ticker_ws_url: Url, tor_socks5_port: u16) -> Result<PriceUp
                 }
             },
             |error, next: Duration| {
-                tracing::info!(
+                tracing::debug!(
                     "Kraken websocket connection failed, retrying in {}ms. Error {:#}",
                     next.as_millis(),
                     error

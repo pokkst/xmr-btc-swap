@@ -118,6 +118,7 @@ async fn main() -> Result<()> {
     };
     let tor_port = if _ac.is_some() { config.tor.socks5_port } else { 0u16 };
     let proxy_string = if tor_port != 0u16 { format!("127.0.0.1:{}", tor_port) } else { "".to_string() };
+    tracing::info!(%proxy_string, "SOCKS5");
 
     match cmd {
         Command::Start {
@@ -168,9 +169,6 @@ async fn main() -> Result<()> {
             let ws_url = if tor_port != 0u16 { "ws://7e6egbawekbkxzkv4244pqeqgoo4axko2imgjbedwnn6s5yb6b7oliqd.onion/ws" } else { "wss://ws.featherwallet.org/ws" };
             let kraken_price_updates = kraken::connect(Url::parse(ws_url)?, tor_port)?;
 
-            let proxy_port = if _ac.is_some() { config.tor.socks5_port } else { 0u16 };
-            tracing::info!(%proxy_port, "SOCKS5");
-
             let kraken_rate = KrakenRate::new(config.maker.ask_spread, kraken_price_updates);
             let namespace = XmrBtcNamespace::from_is_testnet(testnet);
 
@@ -183,7 +181,7 @@ async fn main() -> Result<()> {
                 env_config,
                 namespace,
                 &rendezvous_addrs,
-                proxy_port
+                tor_port
             ).await?;
 
             for listen in config.network.listen.clone() {

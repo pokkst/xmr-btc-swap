@@ -190,7 +190,7 @@ mod connection {
             // if the message is not an event, it is a ticker update or an unknown event
             Err(error) => {
                 tracing::trace!(%msg, "Failed to deserialize message as ticker update. Error {:#}", error);
-                None
+                Ok(None)
             },
         };
     }

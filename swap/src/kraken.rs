@@ -14,7 +14,7 @@ use url::Url;
 /// price_ticker_ws_url must point to a websocket server that follows the kraken
 /// price ticker protocol
 /// See: https://docs.kraken.com/websockets/
-pub fn connect(price_ticker_ws_url: Url) -> Result<PriceUpdates> {
+pub fn connect(price_ticker_ws_url: Url, tor_socks5_port: u16) -> Result<PriceUpdates> {
     let (price_update, price_update_receiver) = watch::channel(Err(Error::NotYetAvailable));
     let price_update = Arc::new(price_update);
 
@@ -33,7 +33,7 @@ pub fn connect(price_ticker_ws_url: Url) -> Result<PriceUpdates> {
                 let price_update = price_update.clone();
                 let price_ticker_ws_url = price_ticker_ws_url.clone();
                 async move {
-                    let mut stream = connection::new(price_ticker_ws_url).await?;
+                    let mut stream = connection::new(price_ticker_ws_url, tor_socks5_port).await?;
 
                     while let Some(update) = stream.try_next().await.map_err(to_backoff)? {
                         let send_result = price_update.send(Ok(update));
@@ -124,19 +124,24 @@ fn to_backoff(e: connection::Error) -> backoff::Error<anyhow::Error> {
 /// The connection may fail in which case it is simply terminated and the stream
 /// ends.
 mod connection {
+    use std::net::Ipv4Addr;
     use super::*;
     use crate::kraken::wire;
     use futures::stream::BoxStream;
-    use tokio_tungstenite::tungstenite;
+    use tokio::io;
+    use tokio::net::TcpStream;
+    use tokio_socks::tcp::Socks5Stream;
+    use tokio_tungstenite::{MaybeTlsStream, tungstenite, WebSocketStream};
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    use tokio_tungstenite::tungstenite::error::UrlError;
+    use tokio_tungstenite::tungstenite::handshake::client::Response;
+    use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
+    use tungstenite::Error as WsError;
 
-    pub async fn new(ws_url: Url) -> Result<BoxStream<'static, Result<wire::PriceUpdate, Error>>> {
-        let (mut rate_stream, _) = tokio_tungstenite::connect_async(ws_url)
+    pub async fn new(ws_url: Url, tor_socks5_port: u16) -> Result<BoxStream<'static, Result<wire::PriceUpdate, Error>>> {
+        let (mut rate_stream, _) = connect_async_with_config(ws_url, None, tor_socks5_port)
             .await
             .context("Failed to connect to Kraken websocket API")?;
-
-        rate_stream
-            .send(SUBSCRIBE_XMR_BTC_TICKER_PAYLOAD.into())
-            .await?;
 
         let stream = rate_stream.err_into().try_filter_map(parse_message).boxed();
 
@@ -149,6 +154,7 @@ mod connection {
     /// `None` being returned. In the context of a [`TryStream`], these will
     /// simply be filtered out.
     async fn parse_message(msg: tungstenite::Message) -> Result<Option<wire::PriceUpdate>, Error> {
+
         let msg = match msg {
             tungstenite::Message::Text(msg) => msg,
             tungstenite::Message::Close(close_frame) => {
@@ -164,43 +170,26 @@ mod connection {
 
                 return Err(Error::ConnectionClosed);
             }
-            msg => {
-                tracing::trace!(
-                    "Kraken rate stream returned non text message that will be ignored: {}",
-                    msg
-                );
-
-                return Ok(None);
-            }
+            msg => msg.to_string()
         };
 
-        let update = match serde_json::from_str::<wire::Event>(&msg) {
-            Ok(wire::Event::SystemStatus) => {
-                tracing::debug!("Connected to Kraken websocket API");
-
-                return Ok(None);
-            }
-            Ok(wire::Event::SubscriptionStatus) => {
-                tracing::debug!("Subscribed to updates for ticker");
-
-                return Ok(None);
-            }
-            Ok(wire::Event::Heartbeat) => {
-                tracing::trace!("Received heartbeat message");
-
-                return Ok(None);
+        return match serde_json::from_str::<wire::Event>(&msg) {
+            Ok(wire::Event::CryptoRates) => {
+                let prices = match serde_json::from_str::<wire::PriceUpdate>(&msg) {
+                    Ok(ticker) => Some(ticker),
+                    Err(error) => {
+                        tracing::trace!(%msg, "Failed to deserialize message as ticker update. Error {:#}", error);
+                        None
+                    }
+                };
+                Ok(prices)
             }
             // if the message is not an event, it is a ticker update or an unknown event
-            Err(_) => match serde_json::from_str::<wire::PriceUpdate>(&msg) {
-                Ok(ticker) => ticker,
-                Err(error) => {
-                    tracing::warn!(%msg, "Failed to deserialize message as ticker update. Error {:#}", error);
-                    return Ok(None);
-                }
+            Err(error) => {
+                tracing::trace!(%msg, "Failed to deserialize message as ticker update. Error {:#}", error);
+                Ok(None)
             },
         };
-
-        Ok(Some(update))
     }
 
     #[derive(Debug, thiserror::Error)]
@@ -220,25 +209,60 @@ mod connection {
         "name": "ticker"
       }
     }"#;
+
+    fn domain(request: &tungstenite::handshake::client::Request) -> Result<String, WsError> {
+        match request.uri().host() {
+            Some(d) => Ok(d.to_string()),
+            None => Err(WsError::Url(tungstenite::error::UrlError::NoHostName)),
+        }
+    }
+
+    pub async fn connect_async_with_config<R>(
+        request: R,
+        config: Option<WebSocketConfig>,
+        tor_socks5_port: u16
+    ) -> Result<(WebSocketStream<MaybeTlsStream<TcpStream>>, Response), WsError>
+        where
+            R: IntoClientRequest + Unpin,
+    {
+        let request = request.into_client_request()?;
+
+        let domain = domain(&request)?;
+        let port = request
+            .uri()
+            .port_u16()
+            .or_else(|| match request.uri().scheme_str() {
+                Some("wss") => Some(443),
+                Some("ws") => Some(80),
+                _ => None,
+            })
+            .ok_or(WsError::Url(UrlError::UnsupportedUrlScheme))?;
+
+        let addr = format!("{}:{}", domain, port);
+        let stream =
+            Socks5Stream::connect((Ipv4Addr::LOCALHOST, tor_socks5_port), addr.to_string())
+                .await
+                .map_err(|e| io::Error::new(io::ErrorKind::ConnectionRefused, e))?;
+        let try_socket = Ok(stream.into_inner());
+        let socket = try_socket.map_err(WsError::Io)?;
+
+        tokio_tungstenite::client_async_tls_with_config(request, socket, config, None).await
+    }
 }
 
 /// Kraken websocket API wire module.
 ///
 /// Responsible for parsing websocket text messages to events and rate updates.
 mod wire {
+    use bitcoin::Amount;
     use super::*;
     use bitcoin::util::amount::ParseAmountError;
-    use serde_json::Value;
 
     #[derive(Debug, Deserialize, PartialEq, Eq)]
-    #[serde(tag = "event")]
+    #[serde(tag = "cmd")]
     pub enum Event {
-        #[serde(rename = "systemStatus")]
-        SystemStatus,
-        #[serde(rename = "heartbeat")]
-        Heartbeat,
-        #[serde(rename = "subscriptionStatus")]
-        SubscriptionStatus,
+        #[serde(rename = "crypto_rates")]
+        CryptoRates,
     }
 
     #[derive(Clone, Debug, thiserror::Error)]
@@ -255,26 +279,23 @@ mod wire {
 
     /// Represents an update within the price ticker.
     #[derive(Clone, Debug, Deserialize)]
-    #[serde(try_from = "TickerUpdate")]
+    #[serde(try_from = "TickerData")]
     pub struct PriceUpdate {
         pub ask: bitcoin::Amount,
     }
 
     #[derive(Debug, Deserialize)]
-    #[serde(transparent)]
-    pub struct TickerUpdate(Vec<TickerField>);
-
-    #[derive(Debug, Deserialize)]
-    #[serde(untagged)]
-    pub enum TickerField {
-        Data(TickerData),
-        Metadata(Value),
+    pub struct TickerData {
+        #[serde(rename = "data")]
+        coins: Vec<CoinData>,
     }
 
     #[derive(Debug, Deserialize)]
-    pub struct TickerData {
-        #[serde(rename = "a")]
-        ask: Vec<RateElement>,
+    pub struct CoinData {
+        #[serde(rename = "symbol")]
+        ticker: String,
+        #[serde(rename = "current_price")]
+        price: f64,
     }
 
     #[derive(Debug, Deserialize)]
@@ -284,57 +305,25 @@ mod wire {
         Number(u64),
     }
 
-    impl TryFrom<TickerUpdate> for PriceUpdate {
+    impl TryFrom<TickerData> for PriceUpdate {
         type Error = Error;
 
-        fn try_from(value: TickerUpdate) -> Result<Self, Error> {
-            let data = value
-                .0
-                .iter()
-                .find_map(|field| match field {
-                    TickerField::Data(data) => Some(data),
-                    TickerField::Metadata(_) => None,
-                })
-                .ok_or(Error::DataFieldMissing)?;
-            let ask = data.ask.first().ok_or(Error::MissingAskRateElementType)?;
-            let ask = match ask {
-                RateElement::Text(ask) => {
-                    bitcoin::Amount::from_str_in(ask, ::bitcoin::Denomination::Bitcoin)?
+        fn try_from(value: TickerData) -> Result<Self, Error> {
+            let _monero_ticker = "xmr".to_string();
+            let _bitcoin_ticker = "btc".to_string();
+            let mut xmr_price = 0f64;
+            let mut btc_price = 0f64;
+            for coin_data in &value.coins {
+                if coin_data.ticker == _monero_ticker {
+                    xmr_price = coin_data.price;
                 }
-                _ => return Err(Error::UnexpectedAskRateElementType),
-            };
-
-            Ok(PriceUpdate { ask })
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn can_deserialize_system_status_event() {
-            let event = r#"{"connectionID":14859574189081089471,"event":"systemStatus","status":"online","version":"1.8.1"}"#;
-
-            let event = serde_json::from_str::<Event>(event).unwrap();
-
-            assert_eq!(event, Event::SystemStatus)
-        }
-
-        #[test]
-        fn can_deserialize_subscription_status_event() {
-            let event = r#"{"channelID":980,"channelName":"ticker","event":"subscriptionStatus","pair":"XMR/XBT","status":"subscribed","subscription":{"name":"ticker"}}"#;
-
-            let event = serde_json::from_str::<Event>(event).unwrap();
-
-            assert_eq!(event, Event::SubscriptionStatus)
-        }
-
-        #[test]
-        fn deserialize_ticker_update() {
-            let message = r#"[980,{"a":["0.00440700",7,"7.35318535"],"b":["0.00440200",7,"7.57416678"],"c":["0.00440700","0.22579000"],"v":["273.75489000","4049.91233351"],"p":["0.00446205","0.00441699"],"t":[123,1310],"l":["0.00439400","0.00429900"],"h":["0.00450000","0.00450000"],"o":["0.00449100","0.00433700"]},"ticker","XMR/XBT"]"#;
-
-            let _ = serde_json::from_str::<TickerUpdate>(message).unwrap();
+                if coin_data.ticker == _bitcoin_ticker {
+                    btc_price = coin_data.price;
+                }
+            }
+            let sats_per_xmr = xmr_price / btc_price;
+            let final_sats_per_xmr = (sats_per_xmr * 100000000.0).round() / 100000000.0;
+            Ok(PriceUpdate { ask: Amount::from_btc(final_sats_per_xmr)? })
         }
     }
 }

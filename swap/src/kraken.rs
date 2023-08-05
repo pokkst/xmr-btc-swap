@@ -176,7 +176,10 @@ mod connection {
         return match serde_json::from_str::<wire::Event>(&msg) {
             Ok(wire::Event::CryptoRates) => {
                 let prices = match serde_json::from_str::<wire::PriceUpdate>(&msg) {
-                    Ok(ticker) => Some(ticker),
+                    Ok(ticker) => {
+                        tracing::debug!("Updated coin prices");
+                        Some(ticker)
+                    },
                     Err(error) => {
                         tracing::trace!(%msg, "Failed to deserialize message as ticker update. Error {:#}", error);
                         None
@@ -187,7 +190,7 @@ mod connection {
             // if the message is not an event, it is a ticker update or an unknown event
             Err(error) => {
                 tracing::trace!(%msg, "Failed to deserialize message as ticker update. Error {:#}", error);
-                Ok(None)
+                None
             },
         };
     }

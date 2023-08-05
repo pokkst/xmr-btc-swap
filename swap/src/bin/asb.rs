@@ -121,9 +121,7 @@ async fn main() -> Result<()> {
     tracing::info!(%proxy_string, "SOCKS5");
 
     match cmd {
-        Command::Start {
-            resume_only
-        } => {
+        Command::Start { resume_only } => {
             // check and warn for duplicate rendezvous points
             let mut rendezvous_addrs = config.network.rendezvous_point.clone();
             let prev_len = rendezvous_addrs.len();

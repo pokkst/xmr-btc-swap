@@ -189,7 +189,7 @@ where
                             let quote = match self.make_quote(self.min_buy, self.max_buy).await {
                                 Ok(quote) => quote,
                                 Err(error) => {
-                                    println!("{}", format!("Failed to make quote: {:#}", error.to_string()))
+                                    println!("{}", format!("Failed to make quote: {:#}", error.to_string()));
                                     continue;
                                 }
                             };

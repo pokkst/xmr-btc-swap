@@ -189,13 +189,13 @@ where
                             let quote = match self.make_quote(self.min_buy, self.max_buy).await {
                                 Ok(quote) => quote,
                                 Err(error) => {
-                                    tracing::warn!(%peer, "Failed to make quote: {:#}", error);
+                                    println!("{}", format!("Failed to make quote: {:#}", error.to_string()))
                                     continue;
                                 }
                             };
 
                             if self.swarm.behaviour_mut().quote.send_response(channel, quote).is_err() {
-                                tracing::debug!(%peer, "Failed to respond with quote");
+                                println!("Failed to respond with quote")
                             }
                         }
                         SwarmEvent::Behaviour(OutEvent::TransferProofAcknowledged { peer, id }) => {

@@ -155,17 +155,14 @@ mod connection {
     /// `None` being returned. In the context of a [`TryStream`], these will
     /// simply be filtered out.
     async fn parse_message(msg: tungstenite::Message) -> Result<Option<wire::PriceUpdate>, Error> {
-
+        println!("{}", format!("MSG:: {}", msg.to_string()));
         let msg = match msg {
             tungstenite::Message::Text(msg) => msg,
             tungstenite::Message::Close(close_frame) => {
                 if let Some(tungstenite::protocol::CloseFrame { code, reason }) = close_frame {
-                    tracing::debug!(
-                        "Kraken rate stream was closed with code {} and reason: {}",
-                        code,
-                        reason
-                    );
+                    println!("{}", format!("Rate stream closed with code: {} and reason {}", code.to_string(), reason.to_string()));
                 } else {
+                    println!("Rate stream closed without code and reason");
                     tracing::debug!("Kraken rate stream was closed without code and reason");
                 }
 
@@ -178,11 +175,11 @@ mod connection {
             Ok(wire::Event::CryptoRates) => {
                 let prices = match serde_json::from_str::<wire::PriceUpdate>(&msg) {
                     Ok(ticker) => {
-                        tracing::debug!("Updated coin prices");
+                        println!("Updated coin prices");
                         Some(ticker)
                     },
                     Err(error) => {
-                        tracing::trace!(%msg, "Failed to deserialize message as ticker update. Error {:#}", error);
+                        println!("{}", format!("Failed to deserialize message as ticker update. Error {:#}", error.to_string()));
                         None
                     }
                 };

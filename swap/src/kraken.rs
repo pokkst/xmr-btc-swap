@@ -19,7 +19,6 @@ pub fn connect(price_ticker_ws_url: Url, tor_socks5_port: u16) -> Result<PriceUp
     let price_update = Arc::new(price_update);
 
     tokio::spawn(async move {
-        println!("Starting tokio async price websocket...");
         // The default backoff config is fine for us apart from one thing:
         // `max_elapsed_time`. If we don't get an error within this timeframe,
         // backoff won't actually retry the operation.
@@ -35,7 +34,6 @@ pub fn connect(price_ticker_ws_url: Url, tor_socks5_port: u16) -> Result<PriceUp
                 let price_ticker_ws_url = price_ticker_ws_url.clone();
                 async move {
                     let mut stream = connection::new(price_ticker_ws_url, tor_socks5_port).await?;
-                    println!("Started stream");
 
                     while let Some(update) = stream.try_next().await.map_err(to_backoff)? {
                         let send_result = price_update.send(Ok(update));
@@ -47,18 +45,19 @@ pub fn connect(price_ticker_ws_url: Url, tor_socks5_port: u16) -> Result<PriceUp
                         }
                     }
 
-                    println!("Stream ended");
                     Err(backoff::Error::transient(anyhow!("stream ended")))
                 }
             },
             |error, next: Duration| {
-                let error_message = format!("Kraken websocket connection failed, retrying in {}ms. Error {:#}", next.as_millis(), error);
-                println!("{}", error_message)
+                tracing::debug!(
+                    "Kraken websocket connection failed, retrying in {}ms. Error {:#}",
+                    next.as_millis(),
+                    error
+                );
             },
         )
         .await;
 
-        println!("Error?");
         match result {
             Err(e) => {
                 tracing::warn!("Rate updates incurred an unrecoverable error: {:#}", e);

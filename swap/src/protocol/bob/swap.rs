@@ -162,10 +162,7 @@ async fn next_state(
                 select! {
                     received_xmr = monero_wallet.watch_for_transfer(watch_request) => {
                         match received_xmr {
-                            Ok(monero::TxHash(str)) => BobState::XmrLocked {
-                                state4: state.xmr_locked(monero_wallet_restore_blockheight),
-                                xmr_lock_txid: monero::TxHash(str)
-                            },
+                            Ok(()) => BobState::XmrLocked(state.xmr_locked(monero_wallet_restore_blockheight), lock_transfer_proof.tx_hash().clone()),
                             Err(monero::InsufficientFunds { expected, actual }) => {
                                 tracing::warn!(%expected, %actual, "Insufficient Monero have been locked!");
                                 tracing::info!(timelock = %state.cancel_timelock, "Waiting for cancel timelock to expire");
@@ -186,44 +183,44 @@ async fn next_state(
             }
         }
         BobState::XmrLocked { state4, xmr_lock_txid } => {
-            let tx_lock_status = bitcoin_wallet.subscribe_to(state4.tx_lock.clone()).await;
+            let tx_lock_status = bitcoin_wallet.subscribe_to(state.tx_lock.clone()).await;
 
-            if let ExpiredTimelocks::None = state4.expired_timelock(bitcoin_wallet).await? {
+            if let ExpiredTimelocks::None = state.expired_timelock(bitcoin_wallet).await? {
                 // Alice has locked Xmr
                 // Bob sends Alice his key
 
                 select! {
-                    result = event_loop_handle.send_encrypted_signature(state4.tx_redeem_encsig()) => {
+                    result = event_loop_handle.send_encrypted_signature(state.tx_redeem_encsig()) => {
                         match result {
-                            Ok(_) => BobState::EncSigSent(state4),
+                            Ok(_) => BobState::EncSigSent(state),
                             Err(bmrng::error::RequestError::RecvError | bmrng::error::RequestError::SendError(_)) => bail!("Failed to communicate encrypted signature through event loop channel"),
                             Err(bmrng::error::RequestError::RecvTimeoutError) => unreachable!("We construct the channel with no timeout"),
                         }
                     },
-                    result = tx_lock_status.wait_until_confirmed_with(state4.cancel_timelock) => {
+                    result = tx_lock_status.wait_until_confirmed_with(state.cancel_timelock) => {
                         result?;
-                        BobState::CancelTimelockExpired(state4.cancel())
+                        BobState::CancelTimelockExpired(state.cancel())
                     }
                 }
             } else {
-                BobState::CancelTimelockExpired(state4.cancel())
+                BobState::CancelTimelockExpired(state.cancel())
             }
         }
-        BobState::EncSigSent(state4) => {
-            let tx_lock_status = bitcoin_wallet.subscribe_to(state4.tx_lock.clone()).await;
+        BobState::EncSigSent(state) => {
+            let tx_lock_status = bitcoin_wallet.subscribe_to(state.tx_lock.clone()).await;
 
-            if let ExpiredTimelocks::None = state4.expired_timelock(bitcoin_wallet).await? {
+            if let ExpiredTimelocks::None = state.expired_timelock(bitcoin_wallet).await? {
                 select! {
-                    state5 = state4.watch_for_redeem_btc(bitcoin_wallet) => {
+                    state5 = state.watch_for_redeem_btc(bitcoin_wallet) => {
                         BobState::BtcRedeemed(state5?)
                     },
-                    result = tx_lock_status.wait_until_confirmed_with(state4.cancel_timelock) => {
+                    result = tx_lock_status.wait_until_confirmed_with(state.cancel_timelock) => {
                         result?;
-                        BobState::CancelTimelockExpired(state4.cancel())
+                        BobState::CancelTimelockExpired(state.cancel())
                     }
                 }
             } else {
-                BobState::CancelTimelockExpired(state4.cancel())
+                BobState::CancelTimelockExpired(state.cancel())
             }
         }
         BobState::BtcRedeemed(state) => {
@@ -254,7 +251,7 @@ async fn next_state(
             // Sweep (transfer all funds) to the given address
             let tx_hashes = monero_wallet.sweep_all(monero_receive_address).await?;
 
-            for tx_hash in &tx_hashes {
+            for tx_hash in tx_hashes {
                 tracing::info!(%monero_receive_address, txid=%tx_hash.0, "Successfully transferred XMR to wallet");
             }
 

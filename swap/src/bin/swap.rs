@@ -462,7 +462,7 @@ async fn main() -> Result<()> {
                 | BobState::SwapSetupCompleted(_)
                 | BobState::BtcLocked { .. }
                 | BobState::XmrLockProofReceived { .. }
-                | BobState::XmrLocked { .. }
+                | BobState::XmrLocked(_)
                 | BobState::EncSigSent(_)
                 | BobState::CancelTimelockExpired(_)
                 | BobState::BtcCancelled(_)

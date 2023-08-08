@@ -6,6 +6,7 @@ use monero_rpc::wallet::{Client, MoneroWalletRpc as _};
 use reqwest::header::CONTENT_LENGTH;
 use reqwest::{IntoUrl, Proxy, Response, Url};
 use std::io::ErrorKind;
+use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use jni::JNIEnv;
@@ -63,12 +64,12 @@ pub struct WalletRpc {
     working_dir: PathBuf,
 }
 
-pub async fn get_tor<T: IntoUrl>(url: T) -> reqwest::Result<Response> {
-    reqwest::Client::builder().proxy(Proxy::https("socks5://127.0.0.1:9050").unwrap()).build()?.get(url).send().await
+pub async fn get_tor<T: IntoUrl>(url: T, proxy_string: String) -> reqwest::Result<Response> {
+    reqwest::Client::builder().proxy(Proxy::https(format!("socks5://{}", proxy_string)).unwrap()).build()?.get(url).send().await
 }
 
 impl WalletRpc {
-    pub async fn new(env: Option<&JNIEnv<'_>>, working_dir: impl AsRef<Path>, use_tor: bool) -> Result<WalletRpc> {
+    pub async fn new(env: Option<&JNIEnv<'_>>, working_dir: impl AsRef<Path>, proxy_string: String) -> Result<WalletRpc> {
         let working_dir = working_dir.as_ref();
 
         if !working_dir.exists() {
@@ -109,8 +110,8 @@ impl WalletRpc {
                 .await?;
 
             let mut response;
-            if use_tor {
-                response = get_tor(DOWNLOAD_URL).await?;
+            if proxy_string.is_empty().not() {
+                response = get_tor(DOWNLOAD_URL, proxy_string).await?;
             } else {
                 response = reqwest::get(DOWNLOAD_URL).await?;
             };

@@ -21,14 +21,14 @@ pub(crate) fn on_xmr_rpc_download_progress(env: &JNIEnv, pct: u64) {
 
 pub(crate) fn get_swap_listener<'a>(env: &'a JNIEnv<'a>) -> JValue<'a> {
     let controller = env
-        .find_class("swap/gui/SwapsController")
+        .find_class("swap/gui/controller/SwapsController")
         .expect("Failed to load the target class");
     env.get_static_field(controller, "swapListener", "Lswap/listener/SwapListener;").unwrap()
 }
 
 pub(crate) fn get_rpc_download_listener<'a>(env: &'a JNIEnv<'a>) -> JValue<'a> {
     let controller = env
-        .find_class("swap/gui/PairingController")
+        .find_class("swap/gui/controller/PairingController")
         .expect("Failed to load the target class");
     env.get_static_field(controller, "rpcDownloadListener", "Lswap/listener/RpcDownloadListener;").unwrap()
 }

@@ -35,7 +35,7 @@ pub async fn cancel(
     let state6 = match state {
         BobState::BtcLocked { state3, .. } => state3.cancel(),
         BobState::XmrLockProofReceived { state, .. } => state.cancel(),
-        BobState::XmrLocked { state4, xmr_lock_txid} => state4.cancel(),
+        BobState::XmrLocked(state4) => state4.cancel(),
         BobState::EncSigSent(state4) => state4.cancel(),
         BobState::CancelTimelockExpired(state6) => state6,
         BobState::BtcRefunded(state6) => state6,
@@ -87,7 +87,7 @@ pub async fn refund(
     let state6 = match state {
         BobState::BtcLocked { state3, .. } => state3.cancel(),
         BobState::XmrLockProofReceived { state, .. } => state.cancel(),
-        BobState::XmrLocked { state4, xmr_lock_txid } => state4.cancel(),
+        BobState::XmrLocked(state4) => state4.cancel(),
         BobState::EncSigSent(state4) => state4.cancel(),
         BobState::CancelTimelockExpired(state6) => state6,
         BobState::BtcCancelled(state6) => state6,

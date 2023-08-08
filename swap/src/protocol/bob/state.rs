@@ -5,7 +5,7 @@ use crate::bitcoin::{
 };
 use crate::monero;
 use crate::monero::wallet::WatchRequest;
-use crate::monero::{monero_private_key, TransferProof, TxHash};
+use crate::monero::{monero_private_key, TransferProof};
 use crate::monero_ext::ScalarExt;
 use crate::protocol::{Message0, Message1, Message2, Message3, Message4, CROSS_CURVE_PROOF_SYSTEM};
 use anyhow::{anyhow, bail, Context, Result};
@@ -37,10 +37,7 @@ pub enum BobState {
         lock_transfer_proof: TransferProof,
         monero_wallet_restore_blockheight: BlockHeight,
     },
-    XmrLocked {
-        state4: State4,
-        xmr_lock_txid: TxHash
-    },
+    XmrLocked(State4),
     EncSigSent(State4),
     BtcRedeemed(State5),
     CancelTimelockExpired(State6),
@@ -48,7 +45,6 @@ pub enum BobState {
     BtcRefunded(State6),
     XmrRedeemed {
         tx_lock_id: bitcoin::Txid,
-        xmr_redeem_txid: TxHash
     },
     BtcPunished {
         tx_lock_id: bitcoin::Txid,

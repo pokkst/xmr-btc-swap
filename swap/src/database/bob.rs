@@ -1,4 +1,4 @@
-use crate::monero::{TransferProof, TxHash};
+use crate::monero::TransferProof;
 use crate::protocol::bob;
 use crate::protocol::bob::BobState;
 use monero_rpc::wallet::BlockHeight;
@@ -29,7 +29,6 @@ pub enum Bob {
     },
     XmrLocked {
         state4: bob::State4,
-        xmr_lock_txid: TxHash
     },
     EncSigSent {
         state4: bob::State4,
@@ -43,7 +42,7 @@ pub enum Bob {
 #[derive(Clone, strum::Display, Debug, Deserialize, Serialize, PartialEq)]
 pub enum BobEndState {
     SafelyAborted,
-    XmrRedeemed { tx_lock_id: bitcoin::Txid, xmr_redeem_txid: TxHash },
+    XmrRedeemed { tx_lock_id: bitcoin::Txid },
     BtcRefunded(Box<bob::State6>),
     BtcPunished { tx_lock_id: bitcoin::Txid },
 }
@@ -75,14 +74,14 @@ impl From<BobState> for Bob {
                 lock_transfer_proof,
                 monero_wallet_restore_blockheight,
             },
-            BobState::XmrLocked { state4, xmr_lock_txid} => Bob::XmrLocked { state4, xmr_lock_txid },
+            BobState::XmrLocked(state4) => Bob::XmrLocked { state4 },
             BobState::EncSigSent(state4) => Bob::EncSigSent { state4 },
             BobState::BtcRedeemed(state5) => Bob::BtcRedeemed(state5),
             BobState::CancelTimelockExpired(state6) => Bob::CancelTimelockExpired(state6),
             BobState::BtcCancelled(state6) => Bob::BtcCancelled(state6),
             BobState::BtcRefunded(state6) => Bob::Done(BobEndState::BtcRefunded(Box::new(state6))),
-            BobState::XmrRedeemed { tx_lock_id, xmr_redeem_txid } => {
-                Bob::Done(BobEndState::XmrRedeemed { tx_lock_id, xmr_redeem_txid })
+            BobState::XmrRedeemed { tx_lock_id } => {
+                Bob::Done(BobEndState::XmrRedeemed { tx_lock_id })
             }
             BobState::BtcPunished { tx_lock_id } => {
                 Bob::Done(BobEndState::BtcPunished { tx_lock_id })
@@ -119,16 +118,14 @@ impl From<Bob> for BobState {
                 lock_transfer_proof,
                 monero_wallet_restore_blockheight,
             },
-            Bob::XmrLocked { state4, xmr_lock_txid } => BobState::XmrLocked {
-                state4, xmr_lock_txid
-            },
+            Bob::XmrLocked { state4 } => BobState::XmrLocked(state4),
             Bob::EncSigSent { state4 } => BobState::EncSigSent(state4),
             Bob::BtcRedeemed(state5) => BobState::BtcRedeemed(state5),
             Bob::CancelTimelockExpired(state6) => BobState::CancelTimelockExpired(state6),
             Bob::BtcCancelled(state6) => BobState::BtcCancelled(state6),
             Bob::Done(end_state) => match end_state {
                 BobEndState::SafelyAborted => BobState::SafelyAborted,
-                BobEndState::XmrRedeemed { tx_lock_id, xmr_redeem_txid } => BobState::XmrRedeemed { tx_lock_id, xmr_redeem_txid },
+                BobEndState::XmrRedeemed { tx_lock_id } => BobState::XmrRedeemed { tx_lock_id },
                 BobEndState::BtcRefunded(state6) => BobState::BtcRefunded(*state6),
                 BobEndState::BtcPunished { tx_lock_id } => BobState::BtcPunished { tx_lock_id },
             },

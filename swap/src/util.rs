@@ -23,12 +23,12 @@ pub(crate) fn get_swap_listener<'a>(env: &'a JNIEnv<'a>) -> JValue<'a> {
     let controller = env
         .find_class("swap/gui/SwapsController")
         .expect("Failed to load the target class");
-    env.get_static_field(controller, "swapListener", "Lswap/lib/SwapListener;").unwrap()
+    env.get_static_field(controller, "swapListener", "Lswap/listener/SwapListener;").unwrap()
 }
 
 pub(crate) fn get_rpc_download_listener<'a>(env: &'a JNIEnv<'a>) -> JValue<'a> {
     let controller = env
         .find_class("swap/gui/PairingController")
         .expect("Failed to load the target class");
-    env.get_static_field(controller, "rpcDownloadListener", "Lswap/lib/RpcDownloadListener;").unwrap()
+    env.get_static_field(controller, "rpcDownloadListener", "Lswap/listener/RpcDownloadListener;").unwrap()
 }

@@ -20,6 +20,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use uuid::Uuid;
+use monero_rpc::wallet::GetBalance;
 
 /// A future that resolves to a tuple of `PeerId`, `transfer_proof::Request` and
 /// `Responder`.
@@ -155,6 +156,12 @@ where
         }
 
         loop {
+            let xmr_balance = match self.monero_wallet.get_balance().await {
+                Ok(balance) => {
+                    println!("{}", format!("MONERO BALANCE:: {}", balance.unlocked_balance));
+                }
+                Err(_) => {}
+            };
             tokio::select! {
                 swarm_event = self.swarm.select_next_some() => {
                     match swarm_event {

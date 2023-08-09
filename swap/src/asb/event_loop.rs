@@ -159,17 +159,17 @@ where
 
         let mut previous_xmr_balance = 0;
         loop {
-            let xmr_balance = match self.monero_wallet.get_balance().await {
+            match self.monero_wallet.get_balance().await {
                 Ok(balance) => {
                     if previous_xmr_balance != balance.balance {
+                        let asb_xmr_balance_data = AsbXmrBalanceData {
+                            total: balance.balance,
+                            unlocked: balance.unlocked_balance,
+                            error: String::new()
+                        };
+                        util::on_asb_xmr_balance_change(&env, asb_xmr_balance_data);
                         previous_xmr_balance = balance.balance;
                     }
-                    let asb_xmr_balance_data = AsbXmrBalanceData {
-                        total: balance.balance,
-                        unlocked: balance.unlocked_balance,
-                        error: String::new()
-                    };
-                    util::on_asb_xmr_balance_change(&env, asb_xmr_balance_data)
                 }
                 Err(err) => {
                     let asb_xmr_balance_data = AsbXmrBalanceData {
@@ -177,7 +177,7 @@ where
                         unlocked: 0,
                         error: err.to_string()
                     };
-                    util::on_asb_xmr_balance_change(&env, asb_xmr_balance_data)
+                    util::on_asb_xmr_balance_change(&env, asb_xmr_balance_data);
                 }
             };
             tokio::select! {

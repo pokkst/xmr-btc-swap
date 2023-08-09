@@ -5,7 +5,7 @@ use crate::network::swap_setup::alice::WalletSnapshot;
 use crate::network::transfer_proof;
 use crate::protocol::alice::{AliceState, State3, Swap};
 use crate::protocol::{Database, State};
-use crate::{bitcoin, env, kraken, monero};
+use crate::{bitcoin, env, kraken, monero, util};
 use anyhow::{Context, Result};
 use futures::future;
 use futures::future::{BoxFuture, FutureExt};
@@ -18,9 +18,11 @@ use std::collections::HashMap;
 use std::convert::{Infallible, TryInto};
 use std::fmt::Debug;
 use std::sync::Arc;
+use jni::JNIEnv;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 use monero_rpc::wallet::GetBalance;
+use crate::asb::asb_xmr_balance_data::AsbXmrBalanceData;
 
 /// A future that resolves to a tuple of `PeerId`, `transfer_proof::Request` and
 /// `Responder`.
@@ -106,7 +108,7 @@ where
         *Swarm::local_peer_id(&self.swarm)
     }
 
-    pub async fn run(mut self) {
+    pub async fn run(mut self, env: &JNIEnv<'_>) {
         // ensure that these streams are NEVER empty, otherwise it will
         // terminate forever.
         self.send_transfer_proof.push(future::pending().boxed());
@@ -155,12 +157,28 @@ where
             }
         }
 
+        let mut previous_xmr_balance = 0;
         loop {
             let xmr_balance = match self.monero_wallet.get_balance().await {
                 Ok(balance) => {
-                    println!("{}", format!("MONERO BALANCE:: {}", balance.unlocked_balance));
+                    if previous_xmr_balance != balance.balance {
+                        previous_xmr_balance = balance.balance;
+                    }
+                    let asb_xmr_balance_data = AsbXmrBalanceData {
+                        total: balance.balance,
+                        unlocked: balance.unlocked_balance,
+                        error: String::new()
+                    };
+                    util::on_asb_xmr_balance_change(&env, asb_xmr_balance_data)
                 }
-                Err(_) => {}
+                Err(err) => {
+                    let asb_xmr_balance_data = AsbXmrBalanceData {
+                        total: 0,
+                        unlocked: 0,
+                        error: err.to_string()
+                    };
+                    util::on_asb_xmr_balance_change(&env, asb_xmr_balance_data)
+                }
             };
             tokio::select! {
                 swarm_event = self.swarm.select_next_some() => {

@@ -161,14 +161,14 @@ where
         loop {
             match self.monero_wallet.get_balance().await {
                 Ok(balance) => {
-                    if previous_xmr_balance != balance.balance {
+                    if previous_xmr_balance != balance.unlocked_balance {
                         let asb_xmr_balance_data = AsbXmrBalanceData {
                             total: balance.balance,
                             unlocked: balance.unlocked_balance,
                             error: String::new()
                         };
                         util::on_asb_xmr_balance_change(&env, asb_xmr_balance_data);
-                        previous_xmr_balance = balance.balance;
+                        previous_xmr_balance = balance.unlocked_balance;
                     }
                 }
                 Err(err) => {

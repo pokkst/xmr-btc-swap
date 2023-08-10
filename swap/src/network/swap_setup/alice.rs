@@ -43,7 +43,7 @@ pub enum OutEvent {
 
 #[derive(Debug)]
 pub struct WalletSnapshot {
-    pub balance: monero_rpc::wallet::GetBalance,
+    balance: monero_rpc::wallet::GetBalance,
     lock_fee: monero::Amount,
 
     // TODO: Consider using the same address for punish and redeem (they are mutually exclusive, so

@@ -231,7 +231,7 @@ async fn main() -> Result<()> {
                 }
             });
 
-            event_loop.run(None).await;
+            event_loop.run().await;
         }
         Command::History => {
             let mut table = Table::new();

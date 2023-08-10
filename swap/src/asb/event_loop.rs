@@ -1,4 +1,4 @@
-use crate::asb::{asb_xmr_balance_data, Behaviour, OutEvent, Rate};
+use crate::asb::{Behaviour, OutEvent, Rate};
 use crate::monero::Amount;
 use crate::network::quote::BidQuote;
 use crate::network::swap_setup::alice::WalletSnapshot;
@@ -108,7 +108,7 @@ where
         *Swarm::local_peer_id(&self.swarm)
     }
 
-    pub async fn run(mut self, env: Option<&JNIEnv<'_>>) {
+    pub async fn run(mut self, env: &JNIEnv<'_>) {
         // ensure that these streams are NEVER empty, otherwise it will
         // terminate forever.
         self.send_transfer_proof.push(future::pending().boxed());
@@ -157,38 +157,7 @@ where
             }
         }
 
-        let mut last_time_checked_in_secs = 0;
-        let mut asb_xmr_balance_data = AsbXmrBalanceData {
-            total: 0,
-            unlocked: 0,
-            error: String::new()
-        };
-
         loop {
-            let current_time_in_secs = util::get_sys_time_in_secs();
-            let time_since_last_check = current_time_in_secs - last_time_checked_in_secs;
-            if time_since_last_check >= 300 { // only update every 5 minutes
-                asb_xmr_balance_data = match self.monero_wallet.get_balance().await {
-                    Ok(balance) => {
-                        last_time_checked_in_secs = util::get_sys_time_in_secs();
-                        AsbXmrBalanceData {
-                            total: balance.balance,
-                            unlocked: balance.unlocked_balance,
-                            error: String::new()
-                        }
-                    }
-                    Err(err) => {
-                        AsbXmrBalanceData {
-                            total: 0,
-                            unlocked: 0,
-                            error: err.to_string()
-                        }
-                    }
-                };
-                if env.is_some() {
-                    util::on_asb_xmr_balance_change(env.unwrap(), asb_xmr_balance_data);
-                }
-            }
             tokio::select! {
                 swarm_event = self.swarm.select_next_some() => {
                     match swarm_event {
@@ -210,15 +179,6 @@ where
                                 }
                             };
 
-                            if env.is_some() {
-                                asb_xmr_balance_data = AsbXmrBalanceData {
-                                    total: wallet_snapshot.balance.balance,
-                                    unlocked: wallet_snapshot.balance.unlocked_balance,
-                                    error: String::new()
-                                };
-                                util::on_asb_xmr_balance_change(env.unwrap(), asb_xmr_balance_data);
-                            }
-
                             // Ignore result, we should never hit this because the receiver will alive as long as the connection is.
                             let _ = responder.respond(wallet_snapshot);
                         }
@@ -229,7 +189,7 @@ where
                             tracing::warn!(%peer, "Ignoring spot price request: {}", error);
                         }
                         SwarmEvent::Behaviour(OutEvent::QuoteRequested { channel, peer }) => {
-                            let quote = match self.make_quote(env, self.min_buy, self.max_buy).await {
+                            let quote = match self.make_quote(self.min_buy, self.max_buy).await {
                                 Ok(quote) => quote,
                                 Err(error) => {
                                     tracing::warn!(%peer, "Failed to make quote: {:#}", error);
@@ -363,7 +323,6 @@ where
 
     async fn make_quote(
         &mut self,
-        env: Option<&JNIEnv<'_>>,
         min_buy: bitcoin::Amount,
         max_buy: bitcoin::Amount,
     ) -> Result<BidQuote> {
@@ -375,15 +334,6 @@ where
             .context("Failed to compute asking price")?;
 
         let balance = self.monero_wallet.get_balance().await?;
-
-        if env.is_some() {
-            let asb_xmr_balance_data = AsbXmrBalanceData {
-                total: balance.balance,
-                unlocked: balance.unlocked_balance,
-                error: String::new()
-            };
-            util::on_asb_xmr_balance_change(env.unwrap(), asb_xmr_balance_data);
-        }
 
         // use unlocked monero balance for quote
         let xmr = Amount::from_piconero(balance.unlocked_balance);

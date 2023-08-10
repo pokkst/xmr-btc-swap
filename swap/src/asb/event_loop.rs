@@ -108,7 +108,7 @@ where
         *Swarm::local_peer_id(&self.swarm)
     }
 
-    pub async fn run(mut self, env: &JNIEnv<'_>) {
+    pub async fn run(mut self, env: Option<&JNIEnv<'_>>) {
         // ensure that these streams are NEVER empty, otherwise it will
         // terminate forever.
         self.send_transfer_proof.push(future::pending().boxed());
@@ -161,7 +161,7 @@ where
         loop {
             let current_time_in_secs = util::get_sys_time_in_secs();
             let time_since_last_check = current_time_in_secs - last_time_checked_in_secs;
-            if time_since_last_check >= 5 {
+            if time_since_last_check >= 10 {
                 let asb_xmr_balance_data = match self.monero_wallet.get_balance().await {
                     Ok(balance) => {
                         last_time_checked_in_secs = util::get_sys_time_in_secs();
@@ -179,7 +179,10 @@ where
                         }
                     }
                 };
-                util::on_asb_xmr_balance_change(&env, asb_xmr_balance_data);
+
+                if env.is_some() {
+                    util::on_asb_xmr_balance_change(env.unwrap(), asb_xmr_balance_data);
+                }
             }
             tokio::select! {
                 swarm_event = self.swarm.select_next_some() => {

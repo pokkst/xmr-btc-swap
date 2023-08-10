@@ -1,3 +1,4 @@
+use std::time::SystemTime;
 use jni::objects::{JObject, JValue};
 use jni::JNIEnv;
 use rust_decimal::prelude::ToPrimitive;
@@ -48,4 +49,11 @@ pub(crate) fn get_rpc_download_listener<'a>(env: &'a JNIEnv<'a>) -> JValue<'a> {
         .find_class("swap/gui/controller/PairingController")
         .expect("Failed to load the target class");
     env.get_static_field(controller, "rpcDownloadListener", "Lswap/listener/RpcDownloadListener;").unwrap()
+}
+
+pub fn get_sys_time_in_secs() -> u64 {
+    match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(n) => n.as_secs(),
+        Err(_) => panic!("SystemTime before UNIX EPOCH!"),
+    }
 }

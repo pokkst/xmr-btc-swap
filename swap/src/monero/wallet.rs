@@ -71,6 +71,11 @@ impl Wallet {
         Ok(())
     }
 
+    pub async fn close(&self) -> Result<()> {
+        self.inner.lock().await.close_wallet().await?;
+        Ok(())
+    }
+
     /// Close the wallet and open (load) another wallet by generating it from
     /// keys. The generated wallet will remain loaded.
     pub async fn create_from_and_load(

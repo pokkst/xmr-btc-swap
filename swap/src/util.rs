@@ -2,6 +2,7 @@ use std::time::SystemTime;
 use jni::objects::{JObject, JValue};
 use jni::JNIEnv;
 use rust_decimal::prelude::ToPrimitive;
+use crate::asb::asb_btc_balance_data::AsbBtcBalanceData;
 use crate::asb::asb_xmr_balance_data::AsbXmrBalanceData;
 
 pub(crate) fn on_xmr_lock_confirmation(env: &JNIEnv, txid: String, confirmations: u64) {
@@ -13,12 +14,21 @@ pub(crate) fn on_xmr_lock_confirmation(env: &JNIEnv, txid: String, confirmations
     }
 }
 
-pub(crate) fn on_asb_xmr_balance_change(env: &JNIEnv, data: AsbXmrBalanceData) {
+pub(crate) fn on_asb_xmr_balance_data(env: &JNIEnv, data: AsbXmrBalanceData) {
     let listener = get_asb_listener(&env);
     let asb_balance_data_json = serde_json::to_string(&data).unwrap();
     let balance_json_bytes = JObject::from(env.byte_array_from_slice(asb_balance_data_json.as_bytes()).expect("Failed to get swap_id bytes"));
     if let JValue::Object(listener) = listener {
-        let result = env.call_method(listener, "onAsbXmrBalanceChange", "([B)V", &[JValue::from(balance_json_bytes)]);
+        let result = env.call_method(listener, "onAsbXmrBalanceData", "([B)V", &[JValue::from(balance_json_bytes)]);
+    }
+}
+
+pub(crate) fn on_asb_btc_balance_data(env: &JNIEnv, data: AsbBtcBalanceData) {
+    let listener = get_asb_listener(&env);
+    let asb_balance_data_json = serde_json::to_string(&data).unwrap();
+    let balance_json_bytes = JObject::from(env.byte_array_from_slice(asb_balance_data_json.as_bytes()).expect("Failed to get swap_id bytes"));
+    if let JValue::Object(listener) = listener {
+        let result = env.call_method(listener, "onAsbBtcBalanceData", "([B)V", &[JValue::from(balance_json_bytes)]);
     }
 }
 

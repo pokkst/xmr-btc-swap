@@ -22,6 +22,7 @@ use jni::JNIEnv;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 use monero_rpc::wallet::GetBalance;
+use crate::asb::asb_btc_balance_data::AsbBtcBalanceData;
 use crate::asb::asb_xmr_balance_data::AsbXmrBalanceData;
 
 /// A future that resolves to a tuple of `PeerId`, `transfer_proof::Request` and
@@ -157,14 +158,16 @@ where
             }
         }
 
-        let mut last_time_checked_in_secs = 0;
+        let mut last_time_xmr_checked_in_secs = 0;
+        let mut last_time_btc_checked_in_secs = 0;
         loop {
             let current_time_in_secs = util::get_sys_time_in_secs();
-            let time_since_last_check = current_time_in_secs - last_time_checked_in_secs;
-            if time_since_last_check >= 10 {
+            let time_since_last_xmr_check = current_time_in_secs - last_time_xmr_checked_in_secs;
+            let time_since_last_btc_check = current_time_in_secs - last_time_btc_checked_in_secs;
+            if time_since_last_xmr_check >= 11 {
                 let asb_xmr_balance_data = match self.monero_wallet.get_balance().await {
                     Ok(balance) => {
-                        last_time_checked_in_secs = util::get_sys_time_in_secs();
+                        last_time_xmr_checked_in_secs = util::get_sys_time_in_secs();
                         AsbXmrBalanceData {
                             total: balance.balance,
                             unlocked: balance.unlocked_balance,
@@ -181,7 +184,29 @@ where
                 };
 
                 if env.is_some() {
-                    util::on_asb_xmr_balance_change(env.unwrap(), asb_xmr_balance_data);
+                    util::on_asb_xmr_balance_data(env.unwrap(), asb_xmr_balance_data);
+                }
+            }
+
+            if time_since_last_btc_check >= 13 {
+                let asb_btc_balance_data = match self.bitcoin_wallet.balance().await {
+                    Ok(balance) => {
+                        last_time_btc_checked_in_secs = util::get_sys_time_in_secs();
+                        AsbBtcBalanceData {
+                            balance: balance.to_sat(),
+                            error: String::new()
+                        }
+                    }
+                    Err(err) => {
+                        AsbBtcBalanceData {
+                            balance: 0,
+                            error: err.to_string()
+                        }
+                    }
+                };
+
+                if env.is_some() {
+                    util::on_asb_btc_balance_data(env.unwrap(), asb_btc_balance_data);
                 }
             }
             tokio::select! {

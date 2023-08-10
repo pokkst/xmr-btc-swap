@@ -6,6 +6,7 @@ mod rate;
 mod recovery;
 pub mod tracing;
 pub mod asb_xmr_balance_data;
+pub mod asb_btc_balance_data;
 
 pub use event_loop::{EventLoop, EventLoopHandle, FixedRate, KrakenRate, LatestRate};
 pub use network::behaviour::{Behaviour, OutEvent};

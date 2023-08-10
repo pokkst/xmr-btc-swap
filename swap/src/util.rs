@@ -14,6 +14,7 @@ pub(crate) fn on_xmr_lock_confirmation(env: &JNIEnv, txid: String, confirmations
 }
 
 pub(crate) fn on_asb_xmr_balance_change(env: &JNIEnv, data: AsbXmrBalanceData) {
+    println!("Calling onAsbXmrBalanceChange");
     let listener = get_asb_listener(&env);
     let asb_balance_data_json = serde_json::to_string(&data).unwrap();
     let balance_json_bytes = JObject::from(env.byte_array_from_slice(asb_balance_data_json.as_bytes()).expect("Failed to get swap_id bytes"));

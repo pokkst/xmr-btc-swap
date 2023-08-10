@@ -157,30 +157,7 @@ where
             }
         }
 
-        let mut last_time_checked_in_secs = 0;
         loop {
-            let current_time_in_secs = util::get_sys_time_in_secs();
-            let time_since_last_check = current_time_in_secs - last_time_checked_in_secs;
-            if time_since_last_check >= 5 {
-                let asb_xmr_balance_data = match self.monero_wallet.get_balance().await {
-                    Ok(balance) => {
-                        last_time_checked_in_secs = util::get_sys_time_in_secs();
-                        AsbXmrBalanceData {
-                            total: balance.balance,
-                            unlocked: balance.unlocked_balance,
-                            error: String::new()
-                        }
-                    }
-                    Err(err) => {
-                        AsbXmrBalanceData {
-                            total: 0,
-                            unlocked: 0,
-                            error: err.to_string()
-                        }
-                    }
-                };
-                util::on_asb_xmr_balance_change(&env, asb_xmr_balance_data);
-            }
             tokio::select! {
                 swarm_event = self.swarm.select_next_some() => {
                     match swarm_event {

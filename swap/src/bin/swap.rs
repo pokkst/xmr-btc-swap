@@ -84,6 +84,7 @@ async fn main() -> Result<()> {
                 data_dir.clone(),
                 env_config,
                 bitcoin_target_block,
+                tor_socks5_port
             )
             .await?;
             let (monero_wallet, _process) =
@@ -211,6 +212,7 @@ async fn main() -> Result<()> {
                 data_dir.clone(),
                 env_config,
                 bitcoin_target_block,
+                0u16 // TODO add Tor option for this command
             )
             .await?;
 
@@ -245,6 +247,7 @@ async fn main() -> Result<()> {
                 data_dir.clone(),
                 env_config,
                 bitcoin_target_block,
+                0u16 // TODO add Tor option for this command
             )
             .await?;
 
@@ -274,6 +277,7 @@ async fn main() -> Result<()> {
                 data_dir.clone(),
                 env_config,
                 bitcoin_target_block,
+                tor_socks5_port
             )
             .await?;
             let (monero_wallet, _process) =
@@ -341,6 +345,7 @@ async fn main() -> Result<()> {
                 data_dir,
                 env_config,
                 bitcoin_target_block,
+                0u16 // TODO add tor option for this command
             )
             .await?;
 
@@ -445,6 +450,7 @@ async fn main() -> Result<()> {
                 data_dir.clone(),
                 env_config,
                 bitcoin_target_block,
+                0u16
             )
             .await?;
             let wallet_export = bitcoin_wallet.wallet_export("cli").await?;
@@ -499,13 +505,14 @@ async fn init_bitcoin_wallet(
     data_dir: PathBuf,
     env_config: Config,
     bitcoin_target_block: usize,
+    tor_socks5_port: u16,
 ) -> Result<bitcoin::Wallet> {
     tracing::debug!("Initializing bitcoin wallet");
     let xprivkey = seed.derive_extended_private_key(env_config.bitcoin_network)?;
 
     let wallet = bitcoin::Wallet::new(
         electrum_rpc_url.clone(),
-        "",
+        format!("127.0.0.1:{}", tor_socks5_port).as_str(),
         data_dir,
         xprivkey,
         env_config,

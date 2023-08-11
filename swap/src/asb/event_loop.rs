@@ -189,6 +189,7 @@ where
             }
 
             if time_since_last_btc_check >= 13 {
+                let _ = self.bitcoin_wallet.sync().await;
                 let asb_btc_balance_data = match self.bitcoin_wallet.balance().await {
                     Ok(balance) => {
                         last_time_btc_checked_in_secs = util::get_sys_time_in_secs();

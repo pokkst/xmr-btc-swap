@@ -41,7 +41,7 @@ const DUST_AMOUNT: u64 = 546;
 const WALLET: &str = "wallet";
 const WALLET_OLD: &str = "wallet-old";
 
-pub(super) fn make_bip84_private<K: DerivableKey<Segwitv0>>(
+pub(super) fn make_bip84_private_samourai_client<K: DerivableKey<Segwitv0>>(
     bip: u32,
     key: K,
     keychain: KeychainKind,
@@ -60,6 +60,7 @@ pub(super) fn make_bip84_private<K: DerivableKey<Segwitv0>>(
             derivation_path.push(bip32::ChildNumber::from_hardened_idx(1)?);
         }
     }
+    // 2147483642 = atomic-swaps-asb
     // 2147483643 = atomic-swaps
     // 2147483644 = bad-bank
     // 2147483645 = premix
@@ -81,11 +82,58 @@ pub(super) fn make_bip84_private<K: DerivableKey<Segwitv0>>(
     Ok((key, derivation_path))
 }
 
+pub(super) fn make_bip84_private_samourai_asb<K: DerivableKey<Segwitv0>>(
+    bip: u32,
+    key: K,
+    keychain: KeychainKind,
+    network: Network,
+) -> Result<impl IntoDescriptorKey<Segwitv0>, DescriptorError> {
+    let mut derivation_path = Vec::with_capacity(4);
+
+    // m / bip' / network' / 0' / keychain / address idx
+    derivation_path.push(bip32::ChildNumber::from_hardened_idx(bip)?);
+
+    match network {
+        Network::Bitcoin => {
+            derivation_path.push(bip32::ChildNumber::from_hardened_idx(0)?);
+        }
+        _ => {
+            derivation_path.push(bip32::ChildNumber::from_hardened_idx(1)?);
+        }
+    }
+    // 2147483642 = atomic-swaps-asb
+    // 2147483643 = atomic-swaps
+    // 2147483644 = bad-bank
+    // 2147483645 = premix
+    // 2147483646 = postmix
+    // 2147483647 = ricochet
+    derivation_path.push(bip32::ChildNumber::from_hardened_idx(2147483642)?);
+
+    match keychain {
+        KeychainKind::External => {
+            derivation_path.push(bip32::ChildNumber::from_normal_idx(0)?)
+        }
+        KeychainKind::Internal => {
+            derivation_path.push(bip32::ChildNumber::from_normal_idx(1)?)
+        }
+    };
+
+    let derivation_path: bip32::DerivationPath = derivation_path.into();
+
+    Ok((key, derivation_path))
+}
+
 pub struct Bip84Samourai<K: DerivableKey<Segwitv0>>(pub K, pub KeychainKind);
+pub struct Bip84SamouraiAsb<K: DerivableKey<Segwitv0>>(pub K, pub KeychainKind);
 
 impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip84Samourai<K> {
     fn build(self, network: Network) -> Result<DescriptorTemplateOut, DescriptorError> {
-        P2Wpkh(make_bip84_private(84, self.0, self.1, network)?).build(network)
+        P2Wpkh(make_bip84_private_samourai_client(84, self.0, self.1, network)?).build(network)
+    }
+}
+impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip84SamouraiAsb<K> {
+    fn build(self, network: Network) -> Result<DescriptorTemplateOut, DescriptorError> {
+        P2Wpkh(make_bip84_private_samourai_asb(84, self.0, self.1, network)?).build(network)
     }
 }
 
@@ -114,6 +162,45 @@ impl Wallet {
         let wallet = match bdk::Wallet::new(
             Bip84Samourai(xprivkey, KeychainKind::External),
             Some(Bip84Samourai(xprivkey, KeychainKind::Internal)),
+            network,
+            database,
+        ) {
+            Ok(w) => w,
+            Err(e) if matches!(e, bdk::Error::ChecksumMismatch) => {
+                Self::migrate(data_dir, xprivkey, network)?
+            }
+            err => err?,
+        };
+
+        let client = Client::new(electrum_rpc_url, electrum_socks5_proxy_string, env_config.bitcoin_sync_interval())?;
+
+        let network = wallet.network();
+
+        Ok(Self {
+            client: Arc::new(Mutex::new(client)),
+            wallet: Arc::new(Mutex::new(wallet)),
+            finality_confirmations: env_config.bitcoin_finality_confirmations,
+            network,
+            target_block,
+        })
+    }
+
+    pub async fn new_samourai_asb(
+        electrum_rpc_url: Url,
+        electrum_socks5_proxy_string: &str,
+        data_dir: impl AsRef<Path>,
+        xprivkey: ExtendedPrivKey,
+        env_config: env::Config,
+        target_block: usize,
+    ) -> Result<Self> {
+        let data_dir = data_dir.as_ref();
+        let wallet_dir = data_dir.join(WALLET);
+        let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
+        let network = env_config.bitcoin_network;
+
+        let wallet = match bdk::Wallet::new(
+            Bip84SamouraiAsb(xprivkey, KeychainKind::External),
+            Some(Bip84SamouraiAsb(xprivkey, KeychainKind::Internal)),
             network,
             database,
         ) {

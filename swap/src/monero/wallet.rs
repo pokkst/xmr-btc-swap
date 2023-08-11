@@ -138,9 +138,9 @@ impl Wallet {
         // it saves its state correctly
         let _ = wallet.close_wallet().await?;
 
-        let _ = wallet
+        if let Err(e) = wallet
             .generate_from_keys(
-                file_name,
+                file_name.clone(),
                 temp_wallet_address.to_string(),
                 private_spend_key.to_string(),
                 PrivateKey::from(private_view_key).to_string(),
@@ -148,7 +148,17 @@ impl Wallet {
                 String::from(""),
                 true,
             )
-            .await?;
+            .await
+        {
+            // In case we failed to refresh/sweep, when resuming the wallet might already
+            // exist! This is a very unlikely scenario, but if we don't take care of it we
+            // might not be able to ever transfer the Monero.
+            tracing::warn!("Failed to generate monero wallet from keys: {:#}", e);
+            tracing::info!(%file_name,
+                    "Falling back to trying to open the the wallet if it already exists",
+                );
+            wallet.open_wallet(file_name).await?;
+        };
 
         // Try to send all the funds from the generated wallet to the default wallet
         match wallet.refresh().await {

@@ -130,6 +130,8 @@ where
             .collect::<Vec<(Uuid, State)>>();
 
         for (swap_id, state) in unfinished_swaps {
+            let alice_state: AliceState = state.clone().try_into().unwrap();
+            println!("{}", format!("{}: {}", swap_id.to_string(), alice_state));
             let peer_id = match self.db.get_peer_id(swap_id).await {
                 Ok(peer_id) => peer_id,
                 Err(_) => {

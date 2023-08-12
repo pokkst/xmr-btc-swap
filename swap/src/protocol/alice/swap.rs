@@ -284,6 +284,7 @@ where
             transfer_proof,
             state3,
         } => {
+            println!("CancelTimelockExpired");
             if state3.check_for_tx_cancel(bitcoin_wallet).await.is_err() {
                 // If Bob hasn't yet broadcasted the cancel transaction, Alice has to publish it
                 // to be able to eventually punish. Since the punish timelock is
@@ -308,8 +309,22 @@ where
             transfer_proof,
             state3,
         } => {
+            println!("BtcCancelled");
             let tx_refund_status = bitcoin_wallet.subscribe_to(state3.tx_refund()).await;
             let tx_cancel_status = bitcoin_wallet.subscribe_to(state3.tx_cancel()).await;
+
+            let refund_tx = state3.fetch_tx_refund(bitcoin_wallet.as_ref()).await;
+            if refund_tx.is_ok() {
+                // catch here in case wait_until_seen() doesn't
+                let refund_tx = refund_tx?;
+                let spend_key = state3.extract_monero_private_key(refund_tx)?;
+                AliceState::BtcRefunded {
+                    monero_wallet_restore_blockheight,
+                    transfer_proof,
+                    spend_key,
+                    state3,
+                }
+            }
 
             select! {
                 seen_refund = tx_refund_status.wait_until_seen() => {

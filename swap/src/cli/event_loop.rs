@@ -53,7 +53,7 @@ impl EventLoop {
         alice_peer_id: PeerId,
     ) -> Result<(Self, EventLoopHandle)> {
         let execution_setup = bmrng::channel_with_timeout(1, Duration::from_secs(60));
-        let transfer_proof = bmrng::channel(1);
+        let transfer_proof = bmrng::channel_with_timeout(1, Duration::from_secs(60));
         let encrypted_signature = bmrng::channel(1);
         let quote = bmrng::channel_with_timeout(1, Duration::from_secs(60));
 

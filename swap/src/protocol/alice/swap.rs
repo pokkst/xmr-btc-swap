@@ -313,7 +313,7 @@ where
             let tx_refund_status = bitcoin_wallet.subscribe_to(state3.tx_refund()).await;
             let tx_cancel_status = bitcoin_wallet.subscribe_to(state3.tx_cancel()).await;
 
-            let refund_tx = state3.fetch_tx_refund(bitcoin_wallet.as_ref()).await;
+            let refund_tx = state3.fetch_tx_refund(&bitcoin_wallet).await;
             if refund_tx.is_ok() {
                 // catch here in case wait_until_seen() doesn't
                 let refund_tx = refund_tx?;
@@ -324,29 +324,29 @@ where
                     spend_key,
                     state3,
                 }
-            }
+            } else {
+                select! {
+                    seen_refund = tx_refund_status.wait_until_seen() => {
+                        seen_refund.context("Failed to monitor refund transaction")?;
 
-            select! {
-                seen_refund = tx_refund_status.wait_until_seen() => {
-                    seen_refund.context("Failed to monitor refund transaction")?;
+                        let published_refund_tx = bitcoin_wallet.get_raw_transaction(state3.tx_refund().txid()).await?;
+                        let spend_key = state3.extract_monero_private_key(published_refund_tx)?;
 
-                    let published_refund_tx = bitcoin_wallet.get_raw_transaction(state3.tx_refund().txid()).await?;
-                    let spend_key = state3.extract_monero_private_key(published_refund_tx)?;
-
-                    AliceState::BtcRefunded {
-                        monero_wallet_restore_blockheight,
-                        transfer_proof,
-                        spend_key,
-                        state3,
+                        AliceState::BtcRefunded {
+                            monero_wallet_restore_blockheight,
+                            transfer_proof,
+                            spend_key,
+                            state3,
+                        }
                     }
-                }
-                result = tx_cancel_status.wait_until_confirmed_with(state3.punish_timelock) => {
-                    result?;
+                    result = tx_cancel_status.wait_until_confirmed_with(state3.punish_timelock) => {
+                        result?;
 
-                    AliceState::BtcPunishable {
-                        monero_wallet_restore_blockheight,
-                        transfer_proof,
-                        state3,
+                        AliceState::BtcPunishable {
+                            monero_wallet_restore_blockheight,
+                            transfer_proof,
+                            state3,
+                        }
                     }
                 }
             }

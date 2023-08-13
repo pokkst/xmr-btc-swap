@@ -219,7 +219,7 @@ async fn main() -> Result<()> {
                     let rate = kraken_rate.clone();
                     tokio::spawn(async move {
                         let swap_id = swap.swap_id;
-                        match run(swap, rate).await {
+                        match run(swap, rate, "".to_string()).await {
                             Ok(state) => {
                                 tracing::debug!(%swap_id, final_state=%state, "Swap completed")
                             }

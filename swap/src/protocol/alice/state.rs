@@ -508,6 +508,7 @@ impl State3 {
         file_name: String,
         spend_key: monero::PrivateKey,
         transfer_proof: TransferProof,
+        refund_xmr_rpc_endpoint: String
     ) -> Result<()> {
         let view_key = self.v;
 
@@ -523,6 +524,7 @@ impl State3 {
                 spend_key,
                 view_key,
                 monero_wallet_restore_blockheight,
+                refund_xmr_rpc_endpoint
             )
             .await?;
 

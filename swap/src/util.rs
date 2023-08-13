@@ -1,6 +1,5 @@
 use std::cmp::min;
 use std::future::Future;
-use std::ops::Not;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
@@ -8,8 +7,8 @@ use std::time::{Duration, SystemTime};
 use anyhow::{bail, Result};
 use bitcoin::Amount;
 use jni::JNIEnv;
-use jni::objects::{JClass, JObject, JString, JValue};
-use jni::sys::{jboolean, jstring};
+use jni::objects::{JObject, JString, JValue};
+use jni::sys::{jstring};
 use libp2p::Multiaddr;
 use monero::Address;
 use rust_decimal::prelude::ToPrimitive;
@@ -20,7 +19,6 @@ use crate::asb::asb_btc_balance_data::AsbBtcBalanceData;
 use crate::asb::asb_data::AsbData;
 use crate::asb::asb_xmr_balance_data::AsbXmrBalanceData;
 use crate::monero::WalletRpc;
-use crate::network::download_rpc_result::DownloadRpcResult;
 use crate::network::quote::{BidQuote, ZeroQuoteReceived};
 use crate::swap_error::SwapError;
 
@@ -305,54 +303,7 @@ pub fn jstring_to_url(env: &JNIEnv, url_jstring: jstring) -> Url {
     Url::from_str(string_value.as_str()).expect("Failed to parse url")
 }
 
-#[tokio::main]
-#[warn(unused_variables)]
-pub async extern "system" fn Java_swap_helper_AddressHelper_isValidXmrAddress(env: JNIEnv, _class: JClass, address_jstring: jstring) -> jboolean {
-    if let Err(e) = jstring_to_xmr_address(&env, address_jstring) { 0 } else { 1 }
-}
-
-#[tokio::main]
-#[warn(unused_variables)]
-pub async extern "system" fn Java_swap_helper_AddressHelper_isValidLibP2pAddress(env: JNIEnv, _class: JClass, address_jstring: jstring) -> jboolean {
-    if let Err(e) = jstring_to_libp2p_multiaddr(&env, address_jstring) { 0 } else { 1 }
-}
-
-#[tokio::main]
-#[warn(unused_variables)]
-pub async extern "system" fn Java_swap_helper_RpcHelper_maybeDownloadXmrRpc(env: JNIEnv, _class: JClass, proxy_jstring: jstring) -> jstring {
-    let data_dir = fs::system_data_dir().expect("Failure to get path");
-    if data_dir.exists().not() {
-        let _ = std::fs::create_dir_all(data_dir.as_path());
-    }
-    let proxy = get_string_value(&env, proxy_jstring).unwrap();
-    let rpc_result = maybe_download_xmr_rpc(&env, data_dir.clone(), proxy).await;
-    let response_json = match rpc_result {
-        Ok(rpc) => {
-            let result = DownloadRpcResult {
-                rpc_path: data_dir.join("monero").into_os_string().into_string().unwrap(),
-                error: "".to_string(),
-            };
-            serde_json::to_string(&result).unwrap()
-        }
-        Err(e) => {
-            let result = DownloadRpcResult {
-                rpc_path: "".to_string(),
-                error: e.to_string(),
-            };
-            serde_json::to_string(&result).unwrap()
-        }
-    };
-    env.new_string(response_json).expect("Failed to get Monero RPC endpoint URL").into_inner()
-}
-
-#[tokio::main]
-#[warn(unused_variables)]
-pub async extern "system" fn Java_swap_lib_SwapClient_getDataDir(env: JNIEnv, _class: JClass) -> jstring {
-    let data_dir = fs::system_data_dir().expect("Failure to get path");
-    env.new_string(data_dir.into_os_string().into_string().unwrap()).expect("Failed to get system data dir").into_inner()
-}
-
-async fn maybe_download_xmr_rpc(
+pub async fn maybe_download_xmr_rpc(
     env: &JNIEnv<'_>,
     data_dir: PathBuf,
     proxy_string: String,

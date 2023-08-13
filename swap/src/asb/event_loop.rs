@@ -158,58 +158,31 @@ where
             }
         }
 
-        let mut last_time_xmr_checked_in_secs = 0;
-        let mut last_time_btc_checked_in_secs = 0;
+        let mut last_time_checked_in_secs = 0;
         loop {
             let current_time_in_secs = util::get_sys_time_in_secs();
-            let time_since_last_xmr_check = current_time_in_secs - last_time_xmr_checked_in_secs;
-            let time_since_last_btc_check = current_time_in_secs - last_time_btc_checked_in_secs;
-            if time_since_last_xmr_check >= 11 {
-                let asb_xmr_balance_data = match self.monero_wallet.get_balance().await {
-                    Ok(balance) => {
-                        last_time_xmr_checked_in_secs = util::get_sys_time_in_secs();
-                        AsbXmrBalanceData {
-                            total: balance.balance,
-                            unlocked: balance.unlocked_balance,
-                            error: String::new()
-                        }
-                    }
-                    Err(err) => {
-                        AsbXmrBalanceData {
-                            total: 0,
-                            unlocked: 0,
-                            error: err.to_string()
-                        }
-                    }
-                };
-
-                if env.is_some() {
-                    util::on_asb_xmr_balance_data(env.unwrap(), asb_xmr_balance_data);
-                }
-            }
-
-            if time_since_last_btc_check >= 13 {
+            let time_since_last_check = current_time_in_secs - last_time_checked_in_secs;
+            if time_since_last_check >= 8 {
                 let _ = self.bitcoin_wallet.sync().await;
                 let asb_btc_balance_data = match self.bitcoin_wallet.balance().await {
-                    Ok(balance) => {
-                        last_time_btc_checked_in_secs = util::get_sys_time_in_secs();
-                        AsbBtcBalanceData {
-                            balance: balance.to_sat(),
-                            error: String::new()
-                        }
-                    }
-                    Err(err) => {
-                        AsbBtcBalanceData {
-                            balance: 0,
-                            error: err.to_string()
-                        }
-                    }
+                    Ok(balance) => { AsbBtcBalanceData { balance: balance.to_sat(), error: String::new() } }
+                    Err(err) => { AsbBtcBalanceData { balance: 0, error: err.to_string() } }
+                };
+
+                let asb_xmr_balance_data = match self.monero_wallet.get_balance().await {
+                    Ok(balance) => { AsbXmrBalanceData { total: balance.balance, unlocked: balance.unlocked_balance, error: String::new() } }
+                    Err(err) => { AsbXmrBalanceData { total: 0, unlocked: 0, error: err.to_string() } }
                 };
 
                 if env.is_some() {
-                    util::on_asb_btc_balance_data(env.unwrap(), asb_btc_balance_data);
+                    let _ = self.monero_wallet.store().await; // save wallet
+                    let env = env.unwrap();
+                    util::on_asb_btc_balance_data(env, asb_btc_balance_data);
+                    util::on_asb_xmr_balance_data(env, asb_xmr_balance_data);
+                    last_time_checked_in_secs = util::get_sys_time_in_secs();
                 }
             }
+
             tokio::select! {
                 swarm_event = self.swarm.select_next_some() => {
                     match swarm_event {

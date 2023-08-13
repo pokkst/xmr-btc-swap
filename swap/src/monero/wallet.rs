@@ -141,6 +141,7 @@ impl Wallet {
 
         // Close the default wallet before generating the other wallet to ensure that
         // it saves its state correctly
+        let _ = wallet.store().await?;
         let _ = wallet.close_wallet().await?;
 
         if let Err(e) = wallet
@@ -189,6 +190,8 @@ impl Wallet {
         }
 
         let _ = wallet.open_wallet(self.name.clone()).await?;
+        let _ = wallet.refresh().await?;
+        let _ = wallet.store().await?;
 
         Ok(())
     }

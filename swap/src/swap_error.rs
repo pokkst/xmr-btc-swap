@@ -6,6 +6,7 @@ use serde::Serialize;
 pub struct SwapError {
     pub swap_id: String,
     pub error_type: ErrorType,
+    pub error_message: String,
     pub fatal: bool
 }
 

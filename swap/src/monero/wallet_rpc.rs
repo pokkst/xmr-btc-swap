@@ -4,34 +4,37 @@ use big_bytes::BigByte;
 use futures::{StreamExt, TryStreamExt};
 use monero_rpc::wallet::{Client, MoneroWalletRpc as _};
 use reqwest::header::CONTENT_LENGTH;
-use reqwest::Url;
+use reqwest::{IntoUrl, Proxy, Response, Url};
 use std::io::ErrorKind;
+use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use jni::JNIEnv;
 use tokio::fs::{remove_file, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio_util::codec::{BytesCodec, FramedRead};
 use tokio_util::io::StreamReader;
+use crate::util;
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 compile_error!("unsupported operating system");
 
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-const DOWNLOAD_URL: &str = "https://downloads.getmonero.org/cli/monero-mac-x64-v0.18.1.2.tar.bz2";
+const DOWNLOAD_URL: &str = "https://downloads.getmonero.org/cli/monero-mac-x64-v0.18.2.2.tar.bz2";
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-const DOWNLOAD_URL: &str = "https://downloads.getmonero.org/cli/monero-mac-armv8-v0.18.0.0.tar.bz2";
+const DOWNLOAD_URL: &str = "https://downloads.getmonero.org/cli/monero-mac-armv8-v0.18.2.2.tar.bz2";
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-const DOWNLOAD_URL: &str = "https://downloads.getmonero.org/cli/monero-linux-x64-v0.18.1.2.tar.bz2";
+const DOWNLOAD_URL: &str = "https://downloads.getmonero.org/cli/monero-linux-x64-v0.18.2.2.tar.bz2";
 
 #[cfg(all(target_os = "linux", target_arch = "arm"))]
 const DOWNLOAD_URL: &str =
-    "https://downloads.getmonero.org/cli/monero-linux-armv7-v0.18.1.2.tar.bz2";
+    "https://downloads.getmonero.org/cli/monero-linux-armv7-v0.18.2.2.tar.bz2";
 
 #[cfg(target_os = "windows")]
-const DOWNLOAD_URL: &str = "https://downloads.getmonero.org/cli/monero-win-x64-v0.18.1.2.zip";
+const DOWNLOAD_URL: &str = "https://downloads.getmonero.org/cli/monero-win-x64-v0.18.2.2.zip";
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 const PACKED_FILE: &str = "monero-wallet-rpc";
@@ -39,7 +42,7 @@ const PACKED_FILE: &str = "monero-wallet-rpc";
 #[cfg(target_os = "windows")]
 const PACKED_FILE: &str = "monero-wallet-rpc.exe";
 
-const WALLET_RPC_VERSION: &str = "v0.18.1.2";
+const WALLET_RPC_VERSION: &str = "v0.18.2.2";
 
 #[derive(Debug, Clone, Copy, thiserror::Error)]
 #[error("monero wallet rpc executable not found in downloaded archive")]
@@ -61,8 +64,12 @@ pub struct WalletRpc {
     working_dir: PathBuf,
 }
 
+pub async fn get_tor<T: IntoUrl>(url: T, proxy_string: String) -> reqwest::Result<Response> {
+    reqwest::Client::builder().proxy(Proxy::https(format!("socks5://{}", proxy_string)).unwrap()).build()?.get(url).send().await
+}
+
 impl WalletRpc {
-    pub async fn new(working_dir: impl AsRef<Path>) -> Result<WalletRpc> {
+    pub async fn new(env: Option<&JNIEnv<'_>>, working_dir: impl AsRef<Path>, proxy_string: String) -> Result<WalletRpc> {
         let working_dir = working_dir.as_ref();
 
         if !working_dir.exists() {
@@ -102,7 +109,12 @@ impl WalletRpc {
                 .open(monero_wallet_rpc.archive_path())
                 .await?;
 
-            let response = reqwest::get(DOWNLOAD_URL).await?;
+            let mut response;
+            if proxy_string.is_empty().not() {
+                response = get_tor(DOWNLOAD_URL, proxy_string).await?;
+            } else {
+                response = reqwest::get(DOWNLOAD_URL).await?;
+            };
 
             let content_length = response.headers()[CONTENT_LENGTH]
                 .to_str()
@@ -138,9 +150,12 @@ impl WalletRpc {
                 // file is compressed approx 3:1 in bz format
                 let total = 3 * content_length;
                 let percent = 100 * received as u64 / total;
-                if percent != notified && percent % 10 == 0 {
+                if percent != notified && percent % 3 == 0 {
                     tracing::debug!("{}%", percent);
                     notified = percent;
+                    if env.is_some() {
+                        util::on_xmr_rpc_download_progress(env.unwrap(), percent);
+                    }
                 }
                 file.write_all(&bytes).await?;
             }

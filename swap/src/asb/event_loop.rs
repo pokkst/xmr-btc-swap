@@ -5,7 +5,7 @@ use crate::network::swap_setup::alice::WalletSnapshot;
 use crate::network::transfer_proof;
 use crate::protocol::alice::{AliceState, State3, Swap};
 use crate::protocol::{Database, State};
-use crate::{bitcoin, env, kraken, monero};
+use crate::{bitcoin, env, kraken, monero, util};
 use anyhow::{Context, Result};
 use futures::future;
 use futures::future::{BoxFuture, FutureExt};
@@ -18,8 +18,12 @@ use std::collections::HashMap;
 use std::convert::{Infallible, TryInto};
 use std::fmt::Debug;
 use std::sync::Arc;
+use jni::JNIEnv;
 use tokio::sync::mpsc;
 use uuid::Uuid;
+use monero_rpc::wallet::GetBalance;
+use crate::asb::asb_btc_balance_data::AsbBtcBalanceData;
+use crate::asb::asb_xmr_balance_data::AsbXmrBalanceData;
 
 /// A future that resolves to a tuple of `PeerId`, `transfer_proof::Request` and
 /// `Responder`.
@@ -105,7 +109,7 @@ where
         *Swarm::local_peer_id(&self.swarm)
     }
 
-    pub async fn run(mut self) {
+    pub async fn run(mut self, env: Option<&JNIEnv<'_>>) {
         // ensure that these streams are NEVER empty, otherwise it will
         // terminate forever.
         self.send_transfer_proof.push(future::pending().boxed());
@@ -154,7 +158,31 @@ where
             }
         }
 
+        let mut last_time_checked_in_secs = 0;
         loop {
+            let current_time_in_secs = util::get_sys_time_in_secs();
+            let time_since_last_check = current_time_in_secs - last_time_checked_in_secs;
+            if time_since_last_check >= 8 {
+                let _ = self.bitcoin_wallet.sync().await;
+                let asb_btc_balance_data = match self.bitcoin_wallet.balance().await {
+                    Ok(balance) => { AsbBtcBalanceData { balance: balance.to_sat(), error: String::new() } }
+                    Err(err) => { AsbBtcBalanceData { balance: 0, error: err.to_string() } }
+                };
+
+                let asb_xmr_balance_data = match self.monero_wallet.get_balance().await {
+                    Ok(balance) => { AsbXmrBalanceData { total: balance.balance, unlocked: balance.unlocked_balance, error: String::new() } }
+                    Err(err) => { AsbXmrBalanceData { total: 0, unlocked: 0, error: err.to_string() } }
+                };
+
+                if env.is_some() {
+                    let _ = self.monero_wallet.store().await; // save wallet
+                    let env = env.unwrap();
+                    util::on_asb_btc_balance_data(env, asb_btc_balance_data);
+                    util::on_asb_xmr_balance_data(env, asb_xmr_balance_data);
+                    last_time_checked_in_secs = util::get_sys_time_in_secs();
+                }
+            }
+
             tokio::select! {
                 swarm_event = self.swarm.select_next_some() => {
                     match swarm_event {

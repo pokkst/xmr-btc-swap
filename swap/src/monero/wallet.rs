@@ -8,17 +8,19 @@ use monero_rpc::wallet::{BlockHeight, MoneroWalletRpc as _, Refreshed};
 use monero_rpc::{jsonrpc, wallet};
 use std::str::FromStr;
 use std::time::Duration;
+use jni::JNIEnv;
 use tokio::sync::Mutex;
 use tokio::time::Interval;
 use url::Url;
+use crate::util;
 
 #[derive(Debug)]
 pub struct Wallet {
-    inner: Mutex<wallet::Client>,
-    network: Network,
-    name: String,
-    main_address: monero::Address,
-    sync_interval: Duration,
+    pub inner: Mutex<wallet::Client>,
+    pub network: Network,
+    pub name: String,
+    pub main_address: monero::Address,
+    pub sync_interval: Duration,
 }
 
 impl Wallet {
@@ -66,6 +68,16 @@ impl Wallet {
 
     pub async fn open(&self, filename: String) -> Result<()> {
         self.inner.lock().await.open_wallet(filename).await?;
+        Ok(())
+    }
+
+    pub async fn close(&self) -> Result<()> {
+        self.inner.lock().await.close_wallet().await?;
+        Ok(())
+    }
+
+    pub async fn store(&self) -> Result<()> {
+        self.inner.lock().await.store().await?;
         Ok(())
     }
 
@@ -129,11 +141,12 @@ impl Wallet {
 
         // Close the default wallet before generating the other wallet to ensure that
         // it saves its state correctly
+        let _ = wallet.store().await?;
         let _ = wallet.close_wallet().await?;
 
-        let _ = wallet
+        if let Err(e) = wallet
             .generate_from_keys(
-                file_name,
+                file_name.clone(),
                 temp_wallet_address.to_string(),
                 private_spend_key.to_string(),
                 PrivateKey::from(private_view_key).to_string(),
@@ -141,7 +154,17 @@ impl Wallet {
                 String::from(""),
                 true,
             )
-            .await?;
+            .await
+        {
+            // In case we failed to refresh/sweep, when resuming the wallet might already
+            // exist! This is a very unlikely scenario, but if we don't take care of it we
+            // might not be able to ever transfer the Monero.
+            tracing::warn!("Failed to generate monero wallet from keys: {:#}", e);
+            tracing::info!(%file_name,
+                    "Falling back to trying to open the the wallet if it already exists",
+                );
+            wallet.open_wallet(file_name).await?;
+        };
 
         // Try to send all the funds from the generated wallet to the default wallet
         match wallet.refresh().await {
@@ -167,17 +190,14 @@ impl Wallet {
         }
 
         let _ = wallet.open_wallet(self.name.clone()).await?;
+        let _ = wallet.refresh().await?;
+        let _ = wallet.store().await?;
 
         Ok(())
     }
 
     pub async fn transfer(&self, request: TransferRequest) -> Result<TransferProof> {
         let inner = self.inner.lock().await;
-
-        inner
-            .open_wallet(self.name.clone())
-            .await
-            .with_context(|| format!("Failed to open wallet {}", self.name))?;
 
         let TransferRequest {
             public_spend_key,
@@ -287,7 +307,7 @@ pub struct WatchRequest {
     pub expected: Amount,
 }
 
-async fn wait_for_confirmations<C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync>(
+async fn wait_for_confirmations<C: wallet::MoneroWalletRpc<reqwest::Client> + Sync>(
     client: &Mutex<C>,
     transfer_proof: TransferProof,
     to_address: Address,
@@ -354,6 +374,90 @@ async fn wait_for_confirmations<C: monero_rpc::wallet::MoneroWalletRpc<reqwest::
 
         if tx.confirmations > seen_confirmations {
             seen_confirmations = tx.confirmations;
+            tracing::info!(
+                %txid,
+                %seen_confirmations,
+                needed_confirmations = %conf_target,
+                "Received new confirmation for Monero lock tx"
+            );
+        }
+    }
+
+    Ok(())
+}
+
+
+pub async fn wait_for_confs<C: wallet::MoneroWalletRpc<reqwest::Client> + Sync>(
+    env: Option<&JNIEnv<'_>>,
+    client: &Mutex<C>,
+    transfer_proof: TransferProof,
+    to_address: Address,
+    expected: Amount,
+    conf_target: u64,
+    mut check_interval: Interval,
+    wallet_name: String,
+) -> Result<(), InsufficientFunds> {
+    let mut seen_confirmations = 0u64;
+
+    while seen_confirmations < conf_target {
+        check_interval.tick().await; // tick() at the beginning of the loop so every `continue` tick()s as well
+
+        let txid = transfer_proof.tx_hash().to_string();
+        let client = client.lock().await;
+
+        let tx = match client
+            .check_tx_key(
+                txid.clone(),
+                transfer_proof.tx_key.to_string(),
+                to_address.to_string(),
+            )
+            .await
+        {
+            Ok(proof) => proof,
+            Err(jsonrpc::Error::JsonRpc(jsonrpc::JsonRpcError {
+                                            code: -1,
+                                            message,
+                                            data,
+                                        })) => {
+                tracing::debug!(message, ?data);
+                tracing::warn!(%txid, message, "`monero-wallet-rpc` failed to fetch transaction, may need to be restarted");
+                continue;
+            }
+            // TODO: Implement this using a generic proxy for each function call once https://github.com/thomaseizinger/rust-jsonrpc-client/issues/47 is fixed.
+            Err(jsonrpc::Error::JsonRpc(jsonrpc::JsonRpcError { code: -13, .. })) => {
+                tracing::debug!(
+                    "Opening wallet `{}` because no wallet is loaded",
+                    wallet_name
+                );
+                let _ = client.open_wallet(wallet_name.clone()).await;
+                continue;
+            }
+            Err(other) => {
+                tracing::debug!(
+                    %txid,
+                    "Failed to retrieve tx from blockchain: {:#}", other
+                );
+                continue; // treating every error as transient and retrying
+                // is obviously wrong but the jsonrpc client is
+                // too primitive to differentiate between all the
+                // cases
+            }
+        };
+
+        let received = Amount::from_piconero(tx.received);
+
+        if received != expected {
+            return Err(InsufficientFunds {
+                expected,
+                actual: received,
+            });
+        }
+
+        if tx.confirmations > seen_confirmations {
+            seen_confirmations = tx.confirmations;
+            if env.is_some() {
+                util::on_xmr_lock_confirmation(env.unwrap(), txid.clone(), seen_confirmations.clone());
+            }
             tracing::info!(
                 %txid,
                 %seen_confirmations,

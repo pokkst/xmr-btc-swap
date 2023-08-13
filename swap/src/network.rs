@@ -14,3 +14,4 @@ pub mod transport;
 
 #[cfg(any(test, feature = "test"))]
 pub mod test;
+pub mod download_rpc_result;

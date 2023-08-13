@@ -267,7 +267,7 @@ async fn start_alice(
     .unwrap();
 
     let peer_id = event_loop.peer_id();
-    let handle = tokio::spawn(event_loop.run());
+    let handle = tokio::spawn(event_loop.run(None));
 
     (AliceApplicationHandle { handle, peer_id }, swap_handle)
 }
@@ -310,6 +310,7 @@ async fn init_test_wallets(
 
     let btc_wallet = swap::bitcoin::Wallet::new(
         electrum_rpc_url,
+        "",
         datadir,
         seed.derive_extended_private_key(env_config.bitcoin_network)
             .expect("Could not create extended private key from seed"),

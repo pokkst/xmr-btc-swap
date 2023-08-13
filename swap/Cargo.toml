@@ -9,6 +9,7 @@ description = "XMR/BTC trustless atomic swaps."
 name = "swap"
 
 [dependencies]
+jni = "0.13.1"
 anyhow = "1"
 async-compression = { version = "0.3", features = [ "bzip2", "tokio" ] }
 async-trait = "0.1"

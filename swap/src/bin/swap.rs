@@ -84,10 +84,11 @@ async fn main() -> Result<()> {
                 data_dir.clone(),
                 env_config,
                 bitcoin_target_block,
+                tor_socks5_port
             )
             .await?;
             let (monero_wallet, _process) =
-                init_monero_wallet(data_dir, monero_daemon_address, env_config).await?;
+                init_monero_wallet(data_dir, monero_daemon_address, false, env_config).await?;
             let bitcoin_wallet = Arc::new(bitcoin_wallet);
             let seller_peer_id = seller
                 .extract_peer_id()
@@ -211,6 +212,7 @@ async fn main() -> Result<()> {
                 data_dir.clone(),
                 env_config,
                 bitcoin_target_block,
+                0u16 // TODO add Tor option for this command
             )
             .await?;
 
@@ -245,6 +247,7 @@ async fn main() -> Result<()> {
                 data_dir.clone(),
                 env_config,
                 bitcoin_target_block,
+                0u16 // TODO add Tor option for this command
             )
             .await?;
 
@@ -274,10 +277,11 @@ async fn main() -> Result<()> {
                 data_dir.clone(),
                 env_config,
                 bitcoin_target_block,
+                tor_socks5_port
             )
             .await?;
             let (monero_wallet, _process) =
-                init_monero_wallet(data_dir, monero_daemon_address, env_config).await?;
+                init_monero_wallet(data_dir, monero_daemon_address, false, env_config).await?;
             let bitcoin_wallet = Arc::new(bitcoin_wallet);
 
             let seller_peer_id = db.get_peer_id(swap_id).await?;
@@ -341,6 +345,7 @@ async fn main() -> Result<()> {
                 data_dir,
                 env_config,
                 bitcoin_target_block,
+                0u16 // TODO add tor option for this command
             )
             .await?;
 
@@ -445,6 +450,7 @@ async fn main() -> Result<()> {
                 data_dir.clone(),
                 env_config,
                 bitcoin_target_block,
+                0u16
             )
             .await?;
             let wallet_export = bitcoin_wallet.wallet_export("cli").await?;
@@ -499,12 +505,14 @@ async fn init_bitcoin_wallet(
     data_dir: PathBuf,
     env_config: Config,
     bitcoin_target_block: usize,
+    tor_socks5_port: u16,
 ) -> Result<bitcoin::Wallet> {
     tracing::debug!("Initializing bitcoin wallet");
     let xprivkey = seed.derive_extended_private_key(env_config.bitcoin_network)?;
 
     let wallet = bitcoin::Wallet::new(
         electrum_rpc_url.clone(),
+        format!("127.0.0.1:{}", tor_socks5_port).as_str(),
         data_dir,
         xprivkey,
         env_config,
@@ -522,13 +530,14 @@ async fn init_bitcoin_wallet(
 async fn init_monero_wallet(
     data_dir: PathBuf,
     monero_daemon_address: String,
+    use_tor: bool,
     env_config: Config,
 ) -> Result<(monero::Wallet, monero::WalletRpcProcess)> {
     let network = env_config.monero_network;
 
     const MONERO_BLOCKCHAIN_MONITORING_WALLET_NAME: &str = "swap-tool-blockchain-monitoring-wallet";
 
-    let monero_wallet_rpc = monero::WalletRpc::new(data_dir.join("monero")).await?;
+    let monero_wallet_rpc = monero::WalletRpc::new(None, data_dir.join("monero"), "".to_string()).await?; // TODO fix proxy for client RPC download
 
     let monero_wallet_rpc_process = monero_wallet_rpc
         .run(network, monero_daemon_address.as_str())

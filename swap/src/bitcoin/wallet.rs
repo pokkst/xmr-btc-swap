@@ -6,7 +6,7 @@ use ::bitcoin::Txid;
 use anyhow::{bail, Context, Result};
 use bdk::blockchain::{Blockchain, ElectrumBlockchain, GetTx};
 use bdk::database::BatchDatabase;
-use bdk::electrum_client::{ElectrumApi, GetHistoryRes};
+use bdk::electrum_client::{ElectrumApi, GetHistoryRes, Socks5Config};
 use bdk::sled::Tree;
 use bdk::wallet::export::FullyNodedExport;
 use bdk::wallet::AddressIndex;
@@ -20,9 +20,14 @@ use rust_decimal_macros::dec;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 use std::fmt;
+use std::ops::Not;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use bdk::descriptor::{DescriptorError, Segwitv0};
+use bdk::keys::{DerivableKey, IntoDescriptorKey};
+use bdk::template::{DescriptorTemplate, DescriptorTemplateOut, P2Wpkh};
+use bitcoin::util::bip32;
 use tokio::sync::{watch, Mutex};
 
 const SLED_TREE_NAME: &str = "default_tree";
@@ -35,9 +40,78 @@ const DUST_AMOUNT: u64 = 546;
 
 const WALLET: &str = "wallet";
 const WALLET_OLD: &str = "wallet-old";
+// 2147483641 = atomic-swaps-asb
+// 2147483642 = atomic-swaps-swap-refunds
+// 2147483643 = atomic-swaps-swap-deposit
+// 2147483644 = bad-bank
+// 2147483645 = premix
+// 2147483646 = postmix
+// 2147483647 = ricochet
+const BAD_BANK: u32 = 2147483644;
+const ATOMIC_SWAPS_SWAP_DEPOSIT_ACCOUNT: u32 = BAD_BANK - 1; // 2147483643
+const ATOMIC_SWAPS_SWAP_REFUNDS_ACCOUNT: u32 = BAD_BANK - 2; // 2147483642
+const ATOMIC_SWAPS_ASB_ACCOUNT: u32 = BAD_BANK - 3; // 2147483641
+
+pub(super) fn make_bip84_private<K: DerivableKey<Segwitv0>>(
+    bip: u32,
+    key: K,
+    keychain: KeychainKind,
+    network: Network,
+    account: u32
+) -> Result<impl IntoDescriptorKey<Segwitv0>, DescriptorError> {
+    let mut derivation_path = Vec::with_capacity(4);
+
+    // m / bip' / network' / 0' / keychain / address idx
+    derivation_path.push(bip32::ChildNumber::from_hardened_idx(bip)?);
+
+    match network {
+        Network::Bitcoin => {
+            derivation_path.push(bip32::ChildNumber::from_hardened_idx(0)?);
+        }
+        _ => {
+            derivation_path.push(bip32::ChildNumber::from_hardened_idx(1)?);
+        }
+    }
+    derivation_path.push(bip32::ChildNumber::from_hardened_idx(account)?);
+
+    match keychain {
+        KeychainKind::External => {
+            derivation_path.push(bip32::ChildNumber::from_normal_idx(0)?)
+        }
+        KeychainKind::Internal => {
+            derivation_path.push(bip32::ChildNumber::from_normal_idx(1)?)
+        }
+    };
+
+    let derivation_path: bip32::DerivationPath = derivation_path.into();
+
+    Ok((key, derivation_path))
+}
+
+pub struct Bip84SamouraiSwapDeposit<K: DerivableKey<Segwitv0>>(pub K, pub KeychainKind);
+pub struct Bip84SamouraiSwapRefund<K: DerivableKey<Segwitv0>>(pub K, pub KeychainKind);
+pub struct Bip84SamouraiAsb<K: DerivableKey<Segwitv0>>(pub K, pub KeychainKind);
+
+impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip84SamouraiSwapDeposit<K> {
+    fn build(self, network: Network) -> Result<DescriptorTemplateOut, DescriptorError> {
+        P2Wpkh(make_bip84_private(84, self.0, self.1, network, ATOMIC_SWAPS_SWAP_DEPOSIT_ACCOUNT)?).build(network)
+    }
+}
+
+impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip84SamouraiSwapRefund<K> {
+    fn build(self, network: Network) -> Result<DescriptorTemplateOut, DescriptorError> {
+        P2Wpkh(make_bip84_private(84, self.0, self.1, network, ATOMIC_SWAPS_SWAP_REFUNDS_ACCOUNT)?).build(network)
+    }
+}
+
+impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip84SamouraiAsb<K> {
+    fn build(self, network: Network) -> Result<DescriptorTemplateOut, DescriptorError> {
+        P2Wpkh(make_bip84_private(84, self.0, self.1, network, ATOMIC_SWAPS_ASB_ACCOUNT)?).build(network)
+    }
+}
 
 pub struct Wallet<D = Tree, C = Client> {
-    client: Arc<Mutex<C>>,
+    pub client: Arc<Mutex<C>>,
     wallet: Arc<Mutex<bdk::Wallet<D>>>,
     finality_confirmations: u32,
     network: Network,
@@ -47,6 +121,7 @@ pub struct Wallet<D = Tree, C = Client> {
 impl Wallet {
     pub async fn new(
         electrum_rpc_url: Url,
+        electrum_socks5_proxy_string: &str,
         data_dir: impl AsRef<Path>,
         xprivkey: ExtendedPrivKey,
         env_config: env::Config,
@@ -58,8 +133,8 @@ impl Wallet {
         let network = env_config.bitcoin_network;
 
         let wallet = match bdk::Wallet::new(
-            bdk::template::Bip84(xprivkey, KeychainKind::External),
-            Some(bdk::template::Bip84(xprivkey, KeychainKind::Internal)),
+            Bip84SamouraiSwapDeposit(xprivkey, KeychainKind::External),
+            Some(Bip84SamouraiSwapDeposit(xprivkey, KeychainKind::Internal)),
             network,
             database,
         ) {
@@ -70,7 +145,85 @@ impl Wallet {
             err => err?,
         };
 
-        let client = Client::new(electrum_rpc_url, env_config.bitcoin_sync_interval())?;
+        let client = Client::new(electrum_rpc_url, electrum_socks5_proxy_string, env_config.bitcoin_sync_interval())?;
+
+        let network = wallet.network();
+
+        Ok(Self {
+            client: Arc::new(Mutex::new(client)),
+            wallet: Arc::new(Mutex::new(wallet)),
+            finality_confirmations: env_config.bitcoin_finality_confirmations,
+            network,
+            target_block,
+        })
+    }
+
+    pub async fn new_refund(
+        electrum_rpc_url: Url,
+        electrum_socks5_proxy_string: &str,
+        data_dir: impl AsRef<Path>,
+        xprivkey: ExtendedPrivKey,
+        env_config: env::Config,
+        target_block: usize,
+    ) -> Result<Self> {
+        let data_dir = data_dir.as_ref();
+        let wallet_dir = data_dir.join(WALLET);
+        let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
+        let network = env_config.bitcoin_network;
+
+        let wallet = match bdk::Wallet::new(
+            Bip84SamouraiSwapRefund(xprivkey, KeychainKind::External),
+            Some(Bip84SamouraiSwapRefund(xprivkey, KeychainKind::Internal)),
+            network,
+            database,
+        ) {
+            Ok(w) => w,
+            Err(e) if matches!(e, bdk::Error::ChecksumMismatch) => {
+                Self::migrate(data_dir, xprivkey, network)?
+            }
+            err => err?,
+        };
+
+        let client = Client::new(electrum_rpc_url, electrum_socks5_proxy_string, env_config.bitcoin_sync_interval())?;
+
+        let network = wallet.network();
+
+        Ok(Self {
+            client: Arc::new(Mutex::new(client)),
+            wallet: Arc::new(Mutex::new(wallet)),
+            finality_confirmations: env_config.bitcoin_finality_confirmations,
+            network,
+            target_block,
+        })
+    }
+
+    pub async fn new_samourai_asb(
+        electrum_rpc_url: Url,
+        electrum_socks5_proxy_string: &str,
+        data_dir: impl AsRef<Path>,
+        xprivkey: ExtendedPrivKey,
+        env_config: env::Config,
+        target_block: usize,
+    ) -> Result<Self> {
+        let data_dir = data_dir.as_ref();
+        let wallet_dir = data_dir.join(WALLET);
+        let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
+        let network = env_config.bitcoin_network;
+
+        let wallet = match bdk::Wallet::new(
+            Bip84SamouraiAsb(xprivkey, KeychainKind::External),
+            Some(Bip84SamouraiAsb(xprivkey, KeychainKind::Internal)),
+            network,
+            database,
+        ) {
+            Ok(w) => w,
+            Err(e) if matches!(e, bdk::Error::ChecksumMismatch) => {
+                Self::migrate(data_dir, xprivkey, network)?
+            }
+            err => err?,
+        };
+
+        let client = Client::new(electrum_rpc_url, electrum_socks5_proxy_string, env_config.bitcoin_sync_interval())?;
 
         let network = wallet.network();
 
@@ -337,6 +490,18 @@ where
             .lock()
             .await
             .get_address(AddressIndex::New)
+            .context("Failed to get new Bitcoin address")?
+            .address;
+
+        Ok(address)
+    }
+
+    pub async fn new_change_address(&self) -> Result<Address> {
+        let address = self
+            .wallet
+            .lock()
+            .await
+            .get_internal_address(AddressIndex::New)
             .context("Failed to get new Bitcoin address")?
             .address;
 
@@ -723,19 +888,23 @@ pub struct Client {
 }
 
 impl Client {
-    fn new(electrum_rpc_url: Url, interval: Duration) -> Result<Self> {
-        let config = bdk::electrum_client::ConfigBuilder::default()
-            .retry(5)
-            .build();
-        let electrum = bdk::electrum_client::Client::from_config(electrum_rpc_url.as_str(), config)
+    fn new(electrum_rpc_url: Url, electrum_socks5_proxy_string: &str, interval: Duration) -> Result<Self> {
+        let mut config_builder = bdk::electrum_client::ConfigBuilder::default()
+            .retry(5);
+        if electrum_socks5_proxy_string.is_empty().not() {
+            config_builder = config_builder
+                .socks5(Option::from(Socks5Config::new(electrum_socks5_proxy_string.to_string()))).unwrap() // use Tor with the Electrum client
+        }
+        let config = config_builder.build();
+        let electrum = bdk::electrum_client::Client::from_config(electrum_rpc_url.as_str(), config.clone())
             .context("Failed to initialize Electrum RPC client")?;
         // Initially fetch the latest block for storing the height.
         // We do not act on this subscription after this call.
         let latest_block = electrum
             .block_headers_subscribe()
-            .context("Failed to subscribe to header notifications")?;
+            .context("Failed to subscribe to header notifications 1")?;
 
-        let client = bdk::electrum_client::Client::new(electrum_rpc_url.as_str())
+        let client = bdk::electrum_client::Client::from_config(electrum_rpc_url.as_str(), config.clone())
             .context("Failed to initialize Electrum RPC client")?;
         let blockchain = ElectrumBlockchain::from(client);
         let last_sync = Instant::now()
@@ -753,7 +922,7 @@ impl Client {
         })
     }
 
-    fn blockchain(&self) -> &ElectrumBlockchain {
+    pub fn blockchain(&self) -> &ElectrumBlockchain {
         &self.blockchain
     }
 

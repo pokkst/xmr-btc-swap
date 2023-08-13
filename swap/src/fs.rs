@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 // Linux: /home/<user>/.config/xmr-btc-swap/
 // OSX: /Users/<user>/Library/Preferences/xmr-btc-swap/
 pub fn system_config_dir() -> Result<PathBuf> {
-    ProjectDirs::from("", "", "xmr-btc-swap")
+    ProjectDirs::from("", "", "samourai-swaps")
         .map(|proj_dirs| proj_dirs.config_dir().to_path_buf())
         .context("Could not generate default system configuration dir path")
 }
@@ -15,7 +15,7 @@ pub fn system_config_dir() -> Result<PathBuf> {
 // Linux: /home/<user>/.local/share/xmr-btc-swap/
 // OSX: /Users/<user>/Library/ApplicationSupport/xmr-btc-swap/
 pub fn system_data_dir() -> Result<PathBuf> {
-    ProjectDirs::from("", "", "xmr-btc-swap")
+    ProjectDirs::from("", "", "samourai-swaps")
         .map(|proj_dirs| proj_dirs.data_dir().to_path_buf())
         .context("Could not generate default system data-dir dir path")
 }

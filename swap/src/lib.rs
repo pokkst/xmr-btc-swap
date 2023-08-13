@@ -31,10 +31,10 @@ pub mod protocol;
 pub mod seed;
 pub mod tor;
 pub mod tracing_ext;
+pub mod util;
 
 mod monero_ext;
 
 #[cfg(test)]
 mod proptest;
-mod util;
 pub mod swap_error;

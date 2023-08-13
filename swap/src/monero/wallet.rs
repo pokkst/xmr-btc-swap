@@ -1,4 +1,4 @@
-use crate::env::{Config, GetConfig, Mainnet, Testnet};
+use crate::env::Config;
 use crate::monero::{
     Amount, InsufficientFunds, PrivateViewKey, PublicViewKey, TransferProof, TxHash,
 };
@@ -32,30 +32,6 @@ impl Wallet {
             Err(error) => {
                 tracing::debug!(%error, "Open wallet response error");
                 client.create_wallet(name.clone(), "English".to_owned()).await.context(
-                    "Unable to create Monero wallet, please ensure that the monero-wallet-rpc is available",
-                )?;
-
-                tracing::debug!(monero_wallet_name = %name, "Created Monero wallet");
-            }
-            Ok(_) => tracing::debug!(monero_wallet_name = %name, "Opened Monero wallet"),
-        }
-
-        Self::connect(client, name, env_config).await
-    }
-
-    pub async fn open_or_create_from_keys(url: Url, name: String,
-                                          address: String,
-                                          spendkey: String,
-                                          viewkey: String,
-                                          restore_height: u32,
-                                          password: String,
-                                          autosave_current: bool, env_config: Config) -> Result<Self> {
-        let client = wallet::Client::new(url)?;
-
-        match client.open_wallet(name.clone()).await {
-            Err(error) => {
-                tracing::debug!(%error, "Open wallet response error");
-                client.generate_from_keys(name.clone(), address, spendkey, viewkey, restore_height, password, autosave_current).await.context(
                     "Unable to create Monero wallet, please ensure that the monero-wallet-rpc is available",
                 )?;
 
@@ -154,7 +130,6 @@ impl Wallet {
         private_spend_key: PrivateKey,
         private_view_key: PrivateViewKey,
         restore_height: BlockHeight,
-        refund_xmr_rpc_endpoint: String
     ) -> Result<()> {
         let public_spend_key = PublicKey::from_private_key(&private_spend_key);
         let public_view_key = PublicKey::from_private_key(&private_view_key.into());
@@ -162,63 +137,14 @@ impl Wallet {
         let temp_wallet_address =
             Address::standard(self.network, public_spend_key, public_view_key);
 
-        if refund_xmr_rpc_endpoint.is_empty() {
-            let wallet = self.inner.lock().await;
-            // Close the default wallet before generating the other wallet to ensure that
-            // it saves its state correctly
-            let _ = wallet.close_wallet().await?;
+        let wallet = self.inner.lock().await;
 
-            if let Err(e) = wallet
-                .generate_from_keys(
-                    file_name.clone(),
-                    temp_wallet_address.to_string(),
-                    private_spend_key.to_string(),
-                    PrivateKey::from(private_view_key).to_string(),
-                    restore_height.height,
-                    String::from(""),
-                    true,
-                )
-                .await
-            {
-                // In case we failed to refresh/sweep, when resuming the wallet might already
-                // exist! This is a very unlikely scenario, but if we don't take care of it we
-                // might not be able to ever transfer the Monero.
-                tracing::warn!("Failed to generate monero wallet from keys: {:#}", e);
-                tracing::info!(%file_name,
-                    "Falling back to trying to open the the wallet if it already exists",
-                );
-                wallet.open_wallet(file_name).await?;
-            };
+        // Close the default wallet before generating the other wallet to ensure that
+        // it saves its state correctly
+        let _ = wallet.close_wallet().await?;
 
-            // Try to send all the funds from the generated wallet to the default wallet
-            match wallet.refresh().await {
-                Ok(_) => match wallet.sweep_all(self.main_address.to_string()).await {
-                    Ok(sweep_all) => {
-                        for tx in sweep_all.tx_hash_list {
-                            tracing::info!(
-                            %tx,
-                            monero_address = %self.main_address,
-                            "Monero transferred back to default wallet");
-                        }
-                    }
-                    Err(error) => {
-                        tracing::warn!(
-                        address = %self.main_address,
-                        "Failed to transfer Monero to default wallet: {:#}", error
-                    );
-                    }
-                },
-                Err(error) => {
-                    tracing::warn!("Failed to refresh generated wallet: {:#}", error);
-                }
-            }
-
-            let _ = wallet.open_wallet(self.name.clone()).await?;
-        } else {
-            let network = self.network;
-            let env_config = if network == monero::Network::Mainnet { Mainnet::get_config() } else { Testnet::get_config() };
-            let refund_wallet = Wallet::open_or_create_from_keys(
-                Url::parse(refund_xmr_rpc_endpoint.as_str()).unwrap().clone(),
+        if let Err(e) = wallet
+            .generate_from_keys(
                 file_name.clone(),
                 temp_wallet_address.to_string(),
                 private_spend_key.to_string(),
@@ -226,33 +152,43 @@ impl Wallet {
                 restore_height.height,
                 String::from(""),
                 true,
-                env_config,
-            ).await?;
+            )
+            .await
+        {
+            // In case we failed to refresh/sweep, when resuming the wallet might already
+            // exist! This is a very unlikely scenario, but if we don't take care of it we
+            // might not be able to ever transfer the Monero.
+            tracing::warn!("Failed to generate monero wallet from keys: {:#}", e);
+            tracing::info!(%file_name,
+                    "Falling back to trying to open the the wallet if it already exists",
+                );
+            wallet.open_wallet(file_name).await?;
+        };
 
-            let main_address = refund_wallet.main_address;
-
-            match refund_wallet.refresh().await {
-                Ok(_) => match refund_wallet.sweep_all(main_address).await {
-                    Ok(sweep_all) => {
-                        for tx in sweep_all {
-                            tracing::info!(
+        // Try to send all the funds from the generated wallet to the default wallet
+        match wallet.refresh().await {
+            Ok(_) => match wallet.sweep_all(self.main_address.to_string()).await {
+                Ok(sweep_all) => {
+                    for tx in sweep_all.tx_hash_list {
+                        tracing::info!(
                             %tx,
                             monero_address = %self.main_address,
                             "Monero transferred back to default wallet");
-                        }
                     }
-                    Err(error) => {
-                        tracing::warn!(
+                }
+                Err(error) => {
+                    tracing::warn!(
                         address = %self.main_address,
                         "Failed to transfer Monero to default wallet: {:#}", error
                     );
-                    }
-                },
-                Err(error) => {
-                    tracing::warn!("Failed to refresh generated wallet: {:#}", error);
                 }
+            },
+            Err(error) => {
+                tracing::warn!("Failed to refresh generated wallet: {:#}", error);
             }
         }
+
+        let _ = wallet.open_wallet(self.name.clone()).await?;
 
         Ok(())
     }

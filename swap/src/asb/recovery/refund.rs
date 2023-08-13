@@ -78,7 +78,6 @@ pub async fn refund(
             swap_id.to_string(),
             spend_key,
             transfer_proof,
-            "".to_string()
         )
         .await?;
 

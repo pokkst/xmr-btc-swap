@@ -10,11 +10,11 @@ use tokio::select;
 use tokio::time::timeout;
 use uuid::Uuid;
 
-pub async fn run<LR>(swap: Swap, rate_service: LR, refund_xmr_rpc_endpoint: String) -> Result<AliceState>
+pub async fn run<LR>(swap: Swap, rate_service: LR) -> Result<AliceState>
 where
     LR: LatestRate + Clone,
 {
-    run_until(swap, |_| false, rate_service, refund_xmr_rpc_endpoint).await
+    run_until(swap, |_| false, rate_service).await
 }
 
 #[tracing::instrument(name = "swap", skip(swap,exit_early,rate_service), fields(id = %swap.swap_id), err)]
@@ -22,7 +22,6 @@ pub async fn run_until<LR>(
     mut swap: Swap,
     exit_early: fn(&AliceState) -> bool,
     rate_service: LR,
-    refund_xmr_rpc_endpoint: String
 ) -> Result<AliceState>
 where
     LR: LatestRate + Clone,
@@ -38,7 +37,6 @@ where
             swap.monero_wallet.as_ref(),
             &swap.env_config,
             rate_service.clone(),
-            refund_xmr_rpc_endpoint.clone()
         )
         .await?;
 
@@ -58,7 +56,6 @@ async fn next_state<LR>(
     monero_wallet: &monero::Wallet,
     env_config: &Config,
     mut rate_service: LR,
-    refund_xmr_rpc_endpoint: String
 ) -> Result<AliceState>
 where
     LR: LatestRate,
@@ -367,7 +364,6 @@ where
                     swap_id.to_string(),
                     spend_key,
                     transfer_proof,
-                    refund_xmr_rpc_endpoint
                 )
                 .await?;
 

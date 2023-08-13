@@ -37,3 +37,4 @@ mod monero_ext;
 #[cfg(test)]
 mod proptest;
 mod util;
+pub mod swap_error;

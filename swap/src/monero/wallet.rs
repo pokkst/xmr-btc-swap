@@ -376,7 +376,7 @@ pub async fn wait_for_confs<C: wallet::MoneroWalletRpc<reqwest::Client> + Sync>(
 
         if tx.confirmations > seen_confirmations {
             seen_confirmations = tx.confirmations;
-            if !env.is_none() {
+            if env.is_some() {
                 util::on_xmr_lock_confirmation(env.unwrap(), txid.clone(), seen_confirmations.clone());
             }
             tracing::info!(

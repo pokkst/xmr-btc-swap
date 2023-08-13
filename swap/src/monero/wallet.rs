@@ -199,6 +199,10 @@ impl Wallet {
     pub async fn transfer(&self, request: TransferRequest) -> Result<TransferProof> {
         let inner = self.inner.lock().await;
 
+        inner.close_wallet().await?;
+        inner.open_wallet(self.name.clone()).await?;
+        inner.refresh().await?; // should only take an extra ~20 seconds
+
         let TransferRequest {
             public_spend_key,
             public_view_key,

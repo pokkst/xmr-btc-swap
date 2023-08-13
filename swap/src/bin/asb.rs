@@ -372,7 +372,8 @@ async fn init_monero_wallet(
         env_config,
     )
     .await?;
-
+    let _ = wallet.refresh().await?;
+    let _ = wallet.store().await?;
     Ok(wallet)
 }
 

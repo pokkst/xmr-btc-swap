@@ -169,6 +169,7 @@ where
                     Err(err) => { AsbBtcBalanceData { balance: 0, error: err.to_string() } }
                 };
 
+                let _ = self.monero_wallet.refresh().await;
                 let asb_xmr_balance_data = match self.monero_wallet.get_balance().await {
                     Ok(balance) => { AsbXmrBalanceData { total: balance.balance, unlocked: balance.unlocked_balance, error: String::new() } }
                     Err(err) => { AsbXmrBalanceData { total: 0, unlocked: 0, error: err.to_string() } }

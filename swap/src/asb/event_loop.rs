@@ -217,12 +217,14 @@ where
                             let quote = match self.make_quote(self.min_buy, self.max_buy).await {
                                 Ok(quote) => quote,
                                 Err(error) => {
+                                    println!("{}", format!("Failed to make quote: {:#}", error.to_string()));
                                     tracing::warn!(%peer, "Failed to make quote: {:#}", error);
                                     continue;
                                 }
                             };
 
                             if self.swarm.behaviour_mut().quote.send_response(channel, quote).is_err() {
+                                println!("Failed to respond with quote");
                                 tracing::debug!(%peer, "Failed to respond with quote");
                             }
                         }
@@ -358,7 +360,9 @@ where
             .ask()
             .context("Failed to compute asking price")?;
 
+        println!("Got ask");
         let balance = self.monero_wallet.get_balance().await?;
+        println!("Got balance");
 
         // use unlocked monero balance for quote
         let xmr = Amount::from_piconero(balance.unlocked_balance);

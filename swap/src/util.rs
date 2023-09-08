@@ -272,7 +272,7 @@ pub fn get_swap_listener<'a>(env: &'a JNIEnv<'a>) -> JValue<'a> {
 
 pub fn get_asb_listener<'a>(env: &'a JNIEnv<'a>) -> JValue<'a> {
     let controller = env
-        .find_class("swap/gui/controller/SwapsController")
+        .find_class("swap/gui/controller/MainController")
         .expect("Failed to load the target class");
     env.get_static_field(controller, "asbListener", "Lswap/listener/AsbListener;").unwrap()
 }

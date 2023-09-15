@@ -265,7 +265,7 @@ pub fn print_swap_log_ln(env: &JNIEnv, message: String) {
 
 pub fn get_swap_listener<'a>(env: &'a JNIEnv<'a>) -> JValue<'a> {
     let controller = env
-        .find_class("swap/gui/controller/SwapsController")
+        .find_class("swap/gui/controller/MainController")
         .expect("Failed to load the target class");
     env.get_static_field(controller, "swapListener", "Lswap/listener/SwapListener;").unwrap()
 }

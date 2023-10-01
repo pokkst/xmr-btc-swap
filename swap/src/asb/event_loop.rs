@@ -162,25 +162,14 @@ where
         loop {
             let current_time_in_secs = util::get_sys_time_in_secs();
             let time_since_last_check = current_time_in_secs - last_time_checked_in_secs;
-            if time_since_last_check >= 8 {
-                let _ = self.bitcoin_wallet.sync().await;
-                let asb_btc_balance_data = match self.bitcoin_wallet.balance().await {
-                    Ok(balance) => { AsbBtcBalanceData { balance: balance.to_sat(), error: String::new() } }
-                    Err(err) => { AsbBtcBalanceData { balance: 0, error: err.to_string() } }
-                };
-
+            if time_since_last_check >= 10 && env.is_some() {
                 let asb_xmr_balance_data = match self.monero_wallet.get_balance().await {
                     Ok(balance) => { AsbXmrBalanceData { total: balance.balance, unlocked: balance.unlocked_balance, error: String::new() } }
                     Err(err) => { AsbXmrBalanceData { total: 0, unlocked: 0, error: err.to_string() } }
                 };
-
-                if env.is_some() {
-                    let _ = self.monero_wallet.store().await; // save wallet
-                    let env = env.unwrap();
-                    util::on_asb_btc_balance_data(env, asb_btc_balance_data);
-                    util::on_asb_xmr_balance_data(env, asb_xmr_balance_data);
-                    last_time_checked_in_secs = util::get_sys_time_in_secs();
-                }
+                let env = env.unwrap();
+                util::on_asb_xmr_balance_data(env, asb_xmr_balance_data);
+                last_time_checked_in_secs = util::get_sys_time_in_secs();
             }
 
             tokio::select! {

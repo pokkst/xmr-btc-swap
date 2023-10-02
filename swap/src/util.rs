@@ -68,7 +68,8 @@ pub async fn determine_btc_to_swap<FB, TB, FMG, TMG, FS, TS, FFE, TFE>(
         on_order_created(&env, swap_id.to_string(), deposit_address.to_string(), min_deposit, maximum_amount);
 
         loop {
-            if get_running_swap(&env) {
+            let running_swap = get_running_swap(&env);
+            if running_swap {
                 min_outstanding = bid_quote.min_quantity - max_giveable;
                 if min_outstanding < dust {
                     min_outstanding += dust // we do not want estimate_fee below to fail, as it fails when it's below dust limit. this is incase someone sends too little
@@ -78,7 +79,7 @@ pub async fn determine_btc_to_swap<FB, TB, FMG, TMG, FS, TS, FFE, TFE>(
 
                 max_giveable = loop {
                     sync().await?;
-                    if get_running_swap(&env) {
+                    if running_swap {
                         let new_max_givable = max_giveable_fn().await?;
 
                         if new_max_givable > max_giveable {
@@ -91,17 +92,15 @@ pub async fn determine_btc_to_swap<FB, TB, FMG, TMG, FS, TS, FFE, TFE>(
                     }
                 };
 
-                if get_running_swap(&env) {
-                    let new_balance = balance().await?;
-                    on_bitcoin_wallet_received(&env, new_balance, max_giveable, bid_quote.min_quantity);
-                    util::print_swap_log_ln(&env, format!("New amount able to be locked with seller: {}", max_giveable));
+                let new_balance = balance().await?;
+                on_bitcoin_wallet_received(&env, new_balance, max_giveable, bid_quote.min_quantity);
+                util::print_swap_log_ln(&env, format!("New amount able to be locked with seller: {}", max_giveable));
 
-                    if max_giveable < bid_quote.min_quantity {
-                        continue;
-                    }
-
-                    break;
+                if max_giveable < bid_quote.min_quantity {
+                    continue;
                 }
+
+                break;
             } else {
                 bail!(SwapDisconnected)
             }

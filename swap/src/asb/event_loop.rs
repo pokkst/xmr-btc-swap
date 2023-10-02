@@ -160,7 +160,7 @@ where
 
         let mut last_time_checked_in_secs = 0;
         loop {
-            /*let current_time_in_secs = util::get_sys_time_in_secs();
+            let current_time_in_secs = util::get_sys_time_in_secs();
             let time_since_last_check = current_time_in_secs - last_time_checked_in_secs;
             if time_since_last_check >= 10 && env.is_some() {
                 let asb_xmr_balance_data = match self.monero_wallet.get_balance().await {
@@ -170,7 +170,7 @@ where
                 let env = env.unwrap();
                 util::on_asb_xmr_balance_data(env, asb_xmr_balance_data);
                 last_time_checked_in_secs = util::get_sys_time_in_secs();
-            }*/
+            }
 
             tokio::select! {
                 swarm_event = self.swarm.select_next_some() => {

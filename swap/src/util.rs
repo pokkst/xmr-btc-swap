@@ -68,6 +68,9 @@ pub async fn determine_btc_to_swap<FB, TB, FMG, TMG, FS, TS, FFE, TFE>(
         on_order_created(&env, swap_id.to_string(), deposit_address.to_string(), min_deposit, maximum_amount);
 
         loop {
+            if !get_running_swap(&env) {
+                break;
+            }
             min_outstanding = bid_quote.min_quantity - max_giveable;
             if min_outstanding < dust {
                 min_outstanding += dust // we do not want estimate_fee below to fail, as it fails when it's below dust limit. this is incase someone sends too little
@@ -77,6 +80,11 @@ pub async fn determine_btc_to_swap<FB, TB, FMG, TMG, FS, TS, FFE, TFE>(
 
             max_giveable = loop {
                 sync().await?;
+
+                if !get_running_swap(&env) {
+                    break Amount::ZERO;
+                }
+
                 let new_max_givable = max_giveable_fn().await?;
 
                 if new_max_givable > max_giveable {
@@ -317,4 +325,14 @@ pub fn get_sys_time_in_secs() -> u64 {
         Ok(n) => n.as_secs(),
         Err(_) => panic!("SystemTime before UNIX EPOCH!"),
     }
+}
+
+pub fn get_running_swap(env: &JNIEnv) -> bool {
+    let listener = get_swap_listener(&env);
+    if let JValue::Object(listener) = listener {
+        let result = env.call_method(listener, "getRunningSwap", "()Z", &[]);
+        let running = result.unwrap().z().unwrap();
+        return running;
+    }
+    return false;
 }

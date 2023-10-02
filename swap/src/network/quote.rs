@@ -40,7 +40,9 @@ pub struct BidQuote {
 #[derive(Clone, Copy, Debug, thiserror::Error)]
 #[error("Received quote of 0")]
 pub struct ZeroQuoteReceived;
-
+#[derive(Clone, Copy, Debug, thiserror::Error)]
+#[error("Swap client disconnected")]
+pub struct SwapDisconnected;
 /// Constructs a new instance of the `quote` behaviour to be used by the ASB.
 ///
 /// The ASB is always listening and only supports inbound connections, i.e.

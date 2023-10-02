@@ -19,7 +19,7 @@ use crate::asb::asb_btc_balance_data::AsbBtcBalanceData;
 use crate::asb::asb_data::AsbData;
 use crate::asb::asb_xmr_balance_data::AsbXmrBalanceData;
 use crate::monero::WalletRpc;
-use crate::network::quote::{BidQuote, ZeroQuoteReceived};
+use crate::network::quote::{BidQuote, SwapDisconnected, ZeroQuoteReceived};
 use crate::swap_error::SwapError;
 
 pub async fn determine_btc_to_swap<FB, TB, FMG, TMG, FS, TS, FFE, TFE>(
@@ -87,7 +87,7 @@ pub async fn determine_btc_to_swap<FB, TB, FMG, TMG, FS, TS, FFE, TFE>(
 
                         tokio::time::sleep(Duration::from_secs(1)).await;
                     } else {
-                        break Amount::ZERO;
+                        bail!(SwapDisconnected)
                     }
                 };
 
@@ -103,7 +103,7 @@ pub async fn determine_btc_to_swap<FB, TB, FMG, TMG, FS, TS, FFE, TFE>(
                     break;
                 }
             } else {
-                break;
+                bail!(SwapDisconnected)
             }
         }
     };

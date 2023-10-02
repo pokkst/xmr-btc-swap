@@ -23,5 +23,6 @@ pub enum  ErrorType {
     FailedToInitAsbBitcoinWallet,
     FailedToLoadSwapDatabase,
     FailedToLoadAsbDatabase,
+    SwapDisconnected,
     UnknownError
 }

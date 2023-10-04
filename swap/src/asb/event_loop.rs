@@ -21,8 +21,6 @@ use std::sync::Arc;
 use jni::JNIEnv;
 use tokio::sync::mpsc;
 use uuid::Uuid;
-use monero_rpc::wallet::GetBalance;
-use crate::asb::asb_btc_balance_data::AsbBtcBalanceData;
 use crate::asb::asb_xmr_balance_data::AsbXmrBalanceData;
 
 /// A future that resolves to a tuple of `PeerId`, `transfer_proof::Request` and

@@ -1,4 +1,3 @@
-use libp2p::Multiaddr;
 use serde::Deserialize;
 use serde::Serialize;
 

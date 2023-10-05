@@ -19,6 +19,7 @@ pub enum  ErrorType {
     FailedToInitMoneroWallet,
     EventLoopPanic,
     DeserializeCborError,
+    EncryptedSignatureTransferError,
     FailedToInitAsbMoneroWallet,
     FailedToInitAsbBitcoinWallet,
     FailedToLoadSwapDatabase,

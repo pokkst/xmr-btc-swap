@@ -190,8 +190,6 @@ impl Wallet {
         }
 
         let _ = wallet.open_wallet(self.name.clone()).await?;
-        let _ = wallet.refresh().await?;
-        let _ = wallet.store().await?;
 
         Ok(())
     }

@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use std::convert::{Infallible, TryInto};
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::time::Duration;
 use jni::JNIEnv;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -171,6 +172,7 @@ where
             }
 
             tokio::select! {
+                biased;
                 swarm_event = self.swarm.select_next_some() => {
                     match swarm_event {
                         SwarmEvent::Behaviour(OutEvent::SwapSetupInitiated { mut send_wallet_snapshot }) => {
@@ -328,6 +330,11 @@ where
                 }
                 Some(response_channel) = self.inflight_encrypted_signatures.next() => {
                     let _ = self.swarm.behaviour_mut().encrypted_signature.send_response(response_channel, ());
+                }
+                asb_kill = watch_for_asb_kill(&env.unwrap()) => {
+                    let _ = self.monero_wallet.store();
+                    self.monero_wallet.close();
+                    break;
                 }
             }
         }
@@ -565,4 +572,16 @@ impl<T> Default for MpscChannels<T> {
         let (sender, receiver) = mpsc::channel(100);
         MpscChannels { sender, receiver }
     }
+}
+
+pub async fn watch_for_asb_kill(env: &JNIEnv<'_>) -> Result<()> {
+    wait_for_asb_client_kill(env)
+        .await
+}
+
+pub async fn wait_for_asb_client_kill(env: &JNIEnv<'_>) -> Result<()> {
+    while util::get_running_asb(env) {
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+    Ok(())
 }

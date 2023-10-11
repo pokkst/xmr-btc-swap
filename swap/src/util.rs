@@ -326,3 +326,13 @@ pub fn get_running_swap(env: &JNIEnv) -> bool {
     }
     return false;
 }
+
+pub fn get_running_asb(env: &JNIEnv) -> bool {
+    let listener = get_asb_listener(&env);
+    if let JValue::Object(listener) = listener {
+        let result = env.call_method(listener, "getRunningAsb", "()Z", &[]);
+        let running = result.unwrap().z().unwrap();
+        return running;
+    }
+    return false;
+}

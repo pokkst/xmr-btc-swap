@@ -581,7 +581,7 @@ pub async fn watch_for_asb_kill(env: &JNIEnv<'_>) -> Result<()> {
 
 pub async fn wait_for_asb_client_kill(env: &JNIEnv<'_>) -> Result<()> {
     while util::get_running_asb(env) {
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
     }
     Ok(())
 }

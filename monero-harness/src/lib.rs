@@ -319,21 +319,21 @@ impl<'c> MoneroWalletRpc {
     }
 
     pub async fn balance(&self) -> Result<u64> {
-        self.client().refresh().await?;
+        self.client().refresh(None).await?;
         let balance = self.client().get_balance(0).await?.balance;
 
         Ok(balance)
     }
 
     pub async fn unlocked_balance(&self) -> Result<u64> {
-        self.client().refresh().await?;
+        self.client().refresh(None).await?;
         let balance = self.client().get_balance(0).await?.unlocked_balance;
 
         Ok(balance)
     }
 
     pub async fn refresh(&self) -> Result<Refreshed> {
-        Ok(self.client().refresh().await?)
+        Ok(self.client().refresh(None).await?)
     }
 }
 

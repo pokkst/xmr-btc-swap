@@ -33,7 +33,7 @@ pub trait MoneroWalletRpc {
         password: String,
         autosave_current: bool,
     ) -> GenerateFromKeys;
-    async fn refresh(&self) -> Refreshed;
+    async fn refresh(&self, start_height: Option<u32>) -> Refreshed;
     async fn sweep_all(&self, address: String) -> SweepAll;
     async fn get_version(&self) -> Version;
     async fn store(&self);

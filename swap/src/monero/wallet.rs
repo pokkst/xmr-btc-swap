@@ -167,7 +167,7 @@ impl Wallet {
         };
 
         // Try to send all the funds from the generated wallet to the default wallet
-        match wallet.refresh().await {
+        match wallet.refresh(Some(restore_height.height)).await {
             Ok(_) => match wallet.sweep_all(self.main_address.to_string()).await {
                 Ok(sweep_all) => {
                     for tx in sweep_all.tx_hash_list {
@@ -284,8 +284,8 @@ impl Wallet {
         self.main_address
     }
 
-    pub async fn refresh(&self) -> Result<Refreshed> {
-        Ok(self.inner.lock().await.refresh().await?)
+    pub async fn refresh(&self, start_height: Option<u32>) -> Result<Refreshed> {
+        Ok(self.inner.lock().await.refresh(start_height).await?)
     }
 }
 

@@ -20,6 +20,7 @@ pub enum  ErrorType {
     EventLoopPanic,
     DeserializeCborError,
     EncryptedSignatureTransferError,
+    EncryptedSignatureAckError,
     SellerEncounteredProblemError,
     FailedToInitAsbMoneroWallet,
     FailedToInitAsbBitcoinWallet,

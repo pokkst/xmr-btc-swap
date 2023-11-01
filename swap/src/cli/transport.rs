@@ -22,13 +22,12 @@ pub fn new(
 ) -> Result<Boxed<(PeerId, StreamMuxerBox)>> {
     let tcp = TokioTcpConfig::new().nodelay(true);
     let tcp_with_dns = TokioDnsConfig::system(tcp)?;
-    let websocket_with_dns = WsConfig::new(tcp_with_dns.clone());
     let transport = match maybe_tor_socks5_port {
         Some(port) => {
             let tor_transport = OptionalTransport::some(TorDialOnlyTransport::new(port));
             tor_transport.boxed()
         },
-        None => tcp_with_dns.or_transport(websocket_with_dns).boxed(),
+        None => tcp_with_dns.boxed(),
     };
 
     authenticate_and_multiplex(transport, identity)

@@ -103,19 +103,17 @@ async fn main() -> Result<()> {
 
     let tor_client =
         tor::Client::new(config.tor.socks5_port).with_control_port(config.tor.control_port);
-    let _ac = match tor_client.assert_tor_running().await {
-        Ok(_) => {
-            tracing::info!("Setting up Tor hidden service");
-            let ac =
-                register_tor_services(config.network.clone().listen, tor_client, &seed)
-                    .await?;
-            Some(ac)
-        }
-        Err(_) => {
-            tracing::warn!("Tor not found. Running on clear net");
-            None
-        }
+    let _ac = if config.tor.socks5_port != 0u16 {
+        tracing::info!("Setting up Tor hidden service");
+        let ac =
+            register_tor_services(config.network.clone().listen, tor_client, &seed)
+                .await?;
+        Some(ac)
+    } else {
+        tracing::warn!("Tor not found. Running on clear net");
+        None
     };
+
     let tor_port = if _ac.is_some() { config.tor.socks5_port } else { 0u16 };
     let proxy_string = if tor_port != 0u16 { format!("127.0.0.1:{}", tor_port) } else { "".to_string() };
     if proxy_string.is_empty() {

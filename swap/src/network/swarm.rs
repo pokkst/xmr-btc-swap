@@ -23,9 +23,10 @@ pub async fn asb<LR>(
 where
     LR: LatestRate + Send + 'static + Debug + Clone,
 {
-    let maybe_tor_socks5_port = match tor::Client::new(tor_socks5_port).assert_tor_running().await {
-        Ok(()) => Some(tor_socks5_port),
-        Err(_) => None,
+    let maybe_tor_socks5_port = if tor_socks5_port != 0u16 {
+        Some(tor_socks5_port)
+    } else {
+        None
     };
 
     let identity = seed.derive_libp2p_identity();
@@ -71,9 +72,10 @@ pub async fn cli<T>(
 where
     T: NetworkBehaviour,
 {
-    let maybe_tor_socks5_port = match tor::Client::new(tor_socks5_port).assert_tor_running().await {
-        Ok(()) => Some(tor_socks5_port),
-        Err(_) => None,
+    let maybe_tor_socks5_port = if tor_socks5_port != 0u16 {
+        Some(tor_socks5_port)
+    } else {
+        None
     };
 
     let transport = cli::transport::new(&identity, maybe_tor_socks5_port)?;

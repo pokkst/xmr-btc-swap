@@ -6,6 +6,7 @@ use libp2p::core::transport::{Boxed, OptionalTransport};
 use libp2p::dns::TokioDnsConfig;
 use libp2p::tcp::TokioTcpConfig;
 use libp2p::{identity, PeerId, Transport};
+use libp2p::websocket::WsConfig;
 
 /// Creates the libp2p transport for the swap CLI.
 ///
@@ -21,12 +22,14 @@ pub fn new(
 ) -> Result<Boxed<(PeerId, StreamMuxerBox)>> {
     let tcp = TokioTcpConfig::new().nodelay(true);
     let tcp_with_dns = TokioDnsConfig::system(tcp)?;
-    let maybe_tor_transport = match maybe_tor_socks5_port {
-        Some(port) => OptionalTransport::some(TorDialOnlyTransport::new(port)),
-        None => OptionalTransport::none(),
+    let websocket_with_dns = WsConfig::new(tcp_with_dns.clone());
+    let transport = match maybe_tor_socks5_port {
+        Some(port) => {
+            let tor_transport = OptionalTransport::some(TorDialOnlyTransport::new(port));
+            tor_transport.boxed()
+        },
+        None => tcp_with_dns.or_transport(websocket_with_dns).boxed(),
     };
-
-    let transport = maybe_tor_transport.or_transport(tcp_with_dns).boxed();
 
     authenticate_and_multiplex(transport, identity)
 }

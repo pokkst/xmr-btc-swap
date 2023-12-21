@@ -161,11 +161,13 @@ where
             let current_time_in_secs = util::get_sys_time_in_secs();
             let time_since_last_check = current_time_in_secs - last_time_checked_in_secs;
             if time_since_last_check >= 5 {
-                let asb_xmr_balance_data = match self.monero_wallet.get_balance().await {
-                    Ok(balance) => { AsbXmrBalanceData { total: balance.balance, unlocked: balance.unlocked_balance, error: String::new() } }
-                    Err(err) => { AsbXmrBalanceData { total: 0, unlocked: 0, error: err.to_string() } }
+                match self.monero_wallet.get_balance().await {
+                    Ok(balance) => { tracing::info!(%balance.balance, %balance.unlocked_balance, "ASB_XMR_BALANCE_DATA"); }
+                    Err(err) => {
+                        let error = err.to_string();
+                        tracing::info!(%error, "ASB_XMR_BALANCE_DATA" );
+                    }
                 };
-                tracing::info!(%asb_xmr_balance_data, "ASB_XMR_BALANCE_DATA");
                 last_time_checked_in_secs = util::get_sys_time_in_secs();
             }
 

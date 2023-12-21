@@ -41,6 +41,14 @@ impl Seed {
         Ok(private_key)
     }
 
+    pub fn derive_bip32_key(
+        &self
+    ) -> Result<ExtendedPrivKey> {
+        let key_bytes = self.bytes();
+        let xprv = ExtendedPrivKey::decode(&key_bytes).expect("Failed to decode key_bytes");
+        Ok(xprv)
+    }
+
     pub fn derive_libp2p_identity(&self) -> identity::Keypair {
         let bytes = self.derive(b"NETWORK").derive(b"LIBP2P_IDENTITY").bytes();
         let key = identity::ed25519::SecretKey::from_bytes(bytes).expect("we always pass 32 bytes");

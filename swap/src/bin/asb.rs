@@ -318,7 +318,7 @@ async fn init_bitcoin_wallet(
         config.bitcoin.electrum_rpc_url.clone(),
         proxy_string.as_str(),
         data_dir,
-        seed.derive_extended_private_key(env_config.bitcoin_network)?,
+        seed.derive_bip32_key()?,
         env_config,
         config.bitcoin.target_block,
     )

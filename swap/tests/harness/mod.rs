@@ -267,7 +267,7 @@ async fn start_alice(
     .unwrap();
 
     let peer_id = event_loop.peer_id();
-    let handle = tokio::spawn(event_loop.run(None));
+    let handle = tokio::spawn(event_loop.run());
 
     (AliceApplicationHandle { handle, peer_id }, swap_handle)
 }

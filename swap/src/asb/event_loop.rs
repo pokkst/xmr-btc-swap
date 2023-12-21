@@ -19,10 +19,8 @@ use std::convert::{Infallible, TryInto};
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
-use jni::JNIEnv;
 use tokio::sync::mpsc;
 use uuid::Uuid;
-use crate::asb::asb_xmr_balance_data::AsbXmrBalanceData;
 
 /// A future that resolves to a tuple of `PeerId`, `transfer_proof::Request` and
 /// `Responder`.
@@ -108,7 +106,7 @@ where
         *Swarm::local_peer_id(&self.swarm)
     }
 
-    pub async fn run(mut self, env: Option<&JNIEnv<'_>>) {
+    pub async fn run(mut self) {
         // ensure that these streams are NEVER empty, otherwise it will
         // terminate forever.
         self.send_transfer_proof.push(future::pending().boxed());
@@ -157,20 +155,7 @@ where
             }
         }
 
-        let mut last_time_checked_in_secs = 0;
         loop {
-            let current_time_in_secs = util::get_sys_time_in_secs();
-            let time_since_last_check = current_time_in_secs - last_time_checked_in_secs;
-            if time_since_last_check >= 10 && env.is_some() {
-                let asb_xmr_balance_data = match self.monero_wallet.get_balance().await {
-                    Ok(balance) => { AsbXmrBalanceData { total: balance.balance, unlocked: balance.unlocked_balance, error: String::new() } }
-                    Err(err) => { AsbXmrBalanceData { total: 0, unlocked: 0, error: err.to_string() } }
-                };
-                let env = env.unwrap();
-                util::on_asb_xmr_balance_data(env, asb_xmr_balance_data);
-                last_time_checked_in_secs = util::get_sys_time_in_secs();
-            }
-
             tokio::select! {
                 biased;
                 swarm_event = self.swarm.select_next_some() => {
@@ -330,11 +315,6 @@ where
                 }
                 Some(response_channel) = self.inflight_encrypted_signatures.next() => {
                     let _ = self.swarm.behaviour_mut().encrypted_signature.send_response(response_channel, ());
-                }
-                asb_kill = watch_for_asb_kill(&env.unwrap()) => {
-                    let _ = self.monero_wallet.store();
-                    self.monero_wallet.close();
-                    break;
                 }
             }
         }
@@ -572,16 +552,4 @@ impl<T> Default for MpscChannels<T> {
         let (sender, receiver) = mpsc::channel(100);
         MpscChannels { sender, receiver }
     }
-}
-
-pub async fn watch_for_asb_kill(env: &JNIEnv<'_>) -> Result<()> {
-    wait_for_asb_client_kill(env)
-        .await
-}
-
-pub async fn wait_for_asb_client_kill(env: &JNIEnv<'_>) -> Result<()> {
-    while util::get_running_asb(env) {
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-    Ok(())
 }

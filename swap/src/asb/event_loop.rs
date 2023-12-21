@@ -21,6 +21,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use uuid::Uuid;
+use crate::asb::asb_xmr_balance_data::AsbXmrBalanceData;
 
 /// A future that resolves to a tuple of `PeerId`, `transfer_proof::Request` and
 /// `Responder`.
@@ -155,7 +156,19 @@ where
             }
         }
 
+        let mut last_time_checked_in_secs = 0;
         loop {
+            let current_time_in_secs = util::get_sys_time_in_secs();
+            let time_since_last_check = current_time_in_secs - last_time_checked_in_secs;
+            if time_since_last_check >= 5 {
+                let asb_xmr_balance_data = match self.monero_wallet.get_balance().await {
+                    Ok(balance) => { AsbXmrBalanceData { total: balance.balance, unlocked: balance.unlocked_balance, error: String::new() } }
+                    Err(err) => { AsbXmrBalanceData { total: 0, unlocked: 0, error: err.to_string() } }
+                };
+                tracing::info!(%asb_xmr_balance_data, "ASB_XMR_BALANCE_DATA");
+                last_time_checked_in_secs = util::get_sys_time_in_secs();
+            }
+
             tokio::select! {
                 biased;
                 swarm_event = self.swarm.select_next_some() => {

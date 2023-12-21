@@ -12,6 +12,7 @@ use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use torut::onion::TorSecretKeyV3;
 
 pub const SEED_LENGTH: usize = 32;
@@ -45,7 +46,8 @@ impl Seed {
         &self
     ) -> Result<ExtendedPrivKey> {
         let key_bytes = self.bytes();
-        let xprv = ExtendedPrivKey::decode(&key_bytes).expect("Failed to decode key_bytes");
+        let xprv_string = bitcoin::util::base58::encode_slice(&key_bytes);
+        let xprv = ExtendedPrivKey::from_str(&xprv_string).expect("Failed to parse xprv_string");
         Ok(xprv)
     }
 

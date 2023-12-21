@@ -60,7 +60,6 @@ impl Seed {
             private_key: SecretKey::from_slice(&hmac_result[..32])?,
             chain_code: ChainCode::from(&hmac_result[32..]),
         };
-        tracing::debug!(%xprv, "XPRV");
         Ok(xprv)
     }
 

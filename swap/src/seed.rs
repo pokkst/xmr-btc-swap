@@ -72,6 +72,15 @@ impl Seed {
         identity::Keypair::Ed25519(key.into())
     }
 
+    pub fn derive_libp2p_identity_asb(&self) -> identity::Keypair {
+        let bytes = self.derive(b"NETWORK").derive(b"LIBP2P_IDENTITY").derive(b"ASB").bytes();
+        let mut sliced_bytes = [0u8; 32];
+        sliced_bytes.copy_from_slice(sha256::Hash::hash(&bytes).to_vec().as_slice());
+        let key = identity::ed25519::SecretKey::from_bytes(sliced_bytes).expect("we always pass 32 bytes");
+
+        identity::Keypair::Ed25519(key.into())
+    }
+
     pub fn derive_torv3_key(&self) -> TorSecretKeyV3 {
         let bytes = self.derive(b"TOR").bytes();
         let mut sliced_bytes = [0u8; 32];

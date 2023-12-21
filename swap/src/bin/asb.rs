@@ -37,7 +37,7 @@ use swap::network::swarm;
 use swap::protocol::alice::{run, AliceState};
 use swap::seed::Seed;
 use swap::tor::AuthenticatedClient;
-use swap::{asb, bitcoin, kraken, monero, tor};
+use swap::{asb, bitcoin, kraken, monero, tor, util};
 use tracing_subscriber::filter::LevelFilter;
 use url::Url;
 
@@ -138,6 +138,7 @@ async fn main() -> Result<()> {
             let kraken_rate = KrakenRate::new(config.maker.ask_spread, kraken_price_updates);
             let namespace = XmrBtcNamespace::from_is_testnet(testnet);
 
+            tracing::info!("ASB_SETTING_UP_LIBP2P_SWARM");
             let mut swarm = swarm::asb(
                 &seed,
                 config.maker.min_buy_btc,
@@ -161,7 +162,10 @@ async fn main() -> Result<()> {
 
             let mut multiaddr = String::new();
             for external_address in config.network.external_addresses {
-                multiaddr = external_address.clone().to_string();
+                if(multiaddr.is_empty()) {
+                    multiaddr = external_address.clone().to_string();
+                }
+                tracing::info!(%external_address, "ASB_REGISTERING_ADDRESS_WITH_RENDEZVOUS");
                 let _ = Swarm::add_external_address(
                     &mut swarm,
                     external_address,
@@ -313,7 +317,6 @@ async fn init_bitcoin_wallet(
     env_config: swap::env::Config,
     proxy_string: String,
 ) -> Result<bitcoin::Wallet> {
-    tracing::debug!("Opening Bitcoin wallet");
     let data_dir = &config.data.dir;
     let wallet = bitcoin::Wallet::new_samourai_asb(
         config.bitcoin.electrum_rpc_url.clone(),
@@ -325,9 +328,13 @@ async fn init_bitcoin_wallet(
     )
     .await
     .context("Failed to initialize Bitcoin wallet")?;
-
+    tracing::info!("ASB_INITIALIZED_BITCOIN_WALLET");
+    tracing::info!("ASB_SYNCING_BITCOIN_WALLET");
+    let start = util::get_sys_time_in_secs();
     wallet.sync().await?;
-
+    let end = util::get_sys_time_in_secs();
+    let duration = end - start;
+    tracing::info!(%duration, "ASB_SYNCED_BITCOIN_WALLET");
     Ok(wallet)
 }
 
@@ -343,18 +350,11 @@ async fn init_monero_wallet(
     .await?;
     tracing::info!("ASB_INITIALIZED_MONERO_WALLET");
     tracing::info!("ASB_SYNCING_MONERO_WALLET");
-    let start = get_sys_time_in_secs();
+    let start = util::get_sys_time_in_secs();
     let _ = wallet.refresh().await?;
     let _ = wallet.store().await; // save wallet upon sync
-    let end = get_sys_time_in_secs();
+    let end = util::get_sys_time_in_secs();
     let duration = end - start;
     tracing::info!(%duration, "ASB_SYNCED_MONERO_WALLET");
     Ok(wallet)
-}
-
-pub fn get_sys_time_in_secs() -> u64 {
-    match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-        Ok(n) => n.as_secs(),
-        Err(_) => panic!("SystemTime before UNIX EPOCH!"),
-    }
 }

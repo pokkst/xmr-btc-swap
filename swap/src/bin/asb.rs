@@ -22,6 +22,7 @@ use std::convert::TryInto;
 use std::env;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
+use std::time::SystemTime;
 use structopt::clap;
 use structopt::clap::ErrorKind;
 use swap::asb::command::{parse_args, Arguments, Command};
@@ -318,7 +319,7 @@ async fn init_bitcoin_wallet(
         config.bitcoin.electrum_rpc_url.clone(),
         proxy_string.as_str(),
         data_dir,
-        seed.derive_bip32_key()?,
+        seed.derive_bip32_key(config.bitcoin.network)?,
         env_config,
         config.bitcoin.target_block,
     )
@@ -334,14 +335,26 @@ async fn init_monero_wallet(
     config: &Config,
     env_config: swap::env::Config,
 ) -> Result<monero::Wallet> {
-    tracing::debug!("Opening Monero wallet");
     let wallet = monero::Wallet::open_or_create(
         config.monero.wallet_rpc_url.clone(),
         DEFAULT_WALLET_NAME.to_string(),
         env_config,
     )
     .await?;
+    tracing::info!("ASB_INITIALIZED_MONERO_WALLET");
+    tracing::info!("ASB_SYNCING_MONERO_WALLET");
+    let start = get_sys_time_in_secs();
     let _ = wallet.refresh().await?;
-    wallet.store().await?;
+    let _ = wallet.store().await; // save wallet upon sync
+    let end = get_sys_time_in_secs();
+    let duration = end - start;
+    tracing::info!(%duration, "ASB_SYNCED_MONERO_WALLET");
     Ok(wallet)
+}
+
+pub fn get_sys_time_in_secs() -> u64 {
+    match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(n) => n.as_secs(),
+        Err(_) => panic!("SystemTime before UNIX EPOCH!"),
+    }
 }

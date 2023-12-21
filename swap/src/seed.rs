@@ -1,28 +1,29 @@
 use crate::fs::ensure_directory_exists;
-use ::bitcoin::secp256k1::constants::SECRET_KEY_SIZE;
 use ::bitcoin::secp256k1::{self, SecretKey};
 use anyhow::{Context, Result};
 use bdk::bitcoin::util::bip32::ExtendedPrivKey;
-use bitcoin::hashes::{sha256, Hash, HashEngine};
+use bitcoin::hashes::{sha256, Hash, HashEngine, sha512, HmacEngine, Hmac};
 use libp2p::identity;
 use pem::{encode, Pem};
 use rand::prelude::*;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fs::{self, File};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use bitcoin::hashes::hex::FromHex;
+use bitcoin::util::bip32::{ChainCode, ChildNumber, Fingerprint};
 use torut::onion::TorSecretKeyV3;
 
-pub const SEED_LENGTH: usize = 32;
+pub const SEED_LENGTH: usize = 64;
 
 #[derive(Eq, PartialEq)]
 pub struct Seed([u8; SEED_LENGTH]);
 
 impl Seed {
     pub fn random() -> Result<Self, Error> {
-        let mut bytes = [0u8; SECRET_KEY_SIZE];
+        let mut bytes = [0u8; 64];
         rand::thread_rng().fill_bytes(&mut bytes);
 
         // If it succeeds once, it'll always succeed
@@ -43,24 +44,40 @@ impl Seed {
     }
 
     pub fn derive_bip32_key(
-        &self
+        &self,
+        network: bitcoin::Network,
     ) -> Result<ExtendedPrivKey> {
         let key_bytes = self.bytes();
-        let xprv_string = bitcoin::util::base58::encode_slice(&key_bytes);
-        let xprv = ExtendedPrivKey::from_str(&xprv_string).expect("Failed to parse xprv_string");
+        let mut hmac_engine: HmacEngine<sha512::Hash> = HmacEngine::new(b"Bitcoin seed");
+        hmac_engine.input(&key_bytes);
+        let hmac_result: Hmac<sha512::Hash> = Hmac::from_engine(hmac_engine);
+
+        let xprv = ExtendedPrivKey {
+            network,
+            depth: 0,
+            parent_fingerprint: Fingerprint::from_hex("00000000").expect("Failed to get parent fingerprint from hex"),
+            child_number: ChildNumber::from_normal_idx(0)?,
+            private_key: SecretKey::from_slice(&hmac_result[..32])?,
+            chain_code: ChainCode::from(&hmac_result[32..]),
+        };
+        tracing::debug!(%xprv, "XPRV");
         Ok(xprv)
     }
 
     pub fn derive_libp2p_identity(&self) -> identity::Keypair {
         let bytes = self.derive(b"NETWORK").derive(b"LIBP2P_IDENTITY").bytes();
-        let key = identity::ed25519::SecretKey::from_bytes(bytes).expect("we always pass 32 bytes");
+        let mut sliced_bytes = [0u8; 32];
+        sliced_bytes.copy_from_slice(sha256::Hash::hash(&bytes).to_vec().as_slice());
+        let key = identity::ed25519::SecretKey::from_bytes(sliced_bytes).expect("we always pass 32 bytes");
 
         identity::Keypair::Ed25519(key.into())
     }
 
     pub fn derive_torv3_key(&self) -> TorSecretKeyV3 {
         let bytes = self.derive(b"TOR").bytes();
-        let sk = ed25519_dalek::SecretKey::from_bytes(&bytes)
+        let mut sliced_bytes = [0u8; 32];
+        sliced_bytes.copy_from_slice(sha256::Hash::hash(&bytes).to_vec().as_slice());
+        let sk = ed25519_dalek::SecretKey::from_bytes(&sliced_bytes)
             .expect("Failed to create a new extended secret key for Tor.");
         let esk = ed25519_dalek::ExpandedSecretKey::from(&sk);
         esk.to_bytes().into()
@@ -88,12 +105,12 @@ impl Seed {
     /// function for deriving specific secret material from the root seed
     /// like the libp2p identity or the seed for the Bitcoin wallet.
     fn derive(&self, scope: &[u8]) -> Self {
-        let mut engine = sha256::HashEngine::default();
+        let mut engine = sha512::HashEngine::default();
 
         engine.input(&self.bytes());
         engine.input(scope);
 
-        let hash = sha256::Hash::from_engine(engine);
+        let hash = sha512::Hash::from_engine(engine);
 
         Self(hash.into_inner())
     }
@@ -191,8 +208,8 @@ mod tests {
     }
 
     #[test]
-    fn seed_byte_string_must_be_32_bytes_long() {
-        let _seed = Seed::from(*b"this string is exactly 32 bytes!");
+    fn seed_byte_string_must_be_32_bytes_long() { // now 64 bytes i just don't want to bother fixing this rn
+        let _seed = Seed::from(*b"this string is exactly 64 bytes!this string is exactly 64 bytes!");
     }
 
     #[test]

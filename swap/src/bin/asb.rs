@@ -126,32 +126,10 @@ async fn main() -> Result<()> {
 
             let monero_wallet = init_monero_wallet(&config, env_config).await?;
             let monero_address = monero_wallet.get_main_address();
-            tracing::info!(%monero_address, "Monero wallet address");
-            let monero = monero_wallet.get_balance().await?;
-            match (monero.balance, monero.unlocked_balance) {
-                (0, _) => {
-                    tracing::warn!(
-                        %monero_address,
-                        "The Monero balance is 0, make sure to deposit funds at",
-                    )
-                }
-                (total, 0) => {
-                    let total = monero::Amount::from_piconero(total);
-                    tracing::warn!(
-                        %total,
-                        "Unlocked Monero balance is 0, total balance is",
-                    )
-                }
-                (total, unlocked) => {
-                    let total = monero::Amount::from_piconero(total);
-                    let unlocked = monero::Amount::from_piconero(unlocked);
-                    tracing::info!(%total, %unlocked, "Monero wallet balance");
-                }
-            }
+            let monero_balance = monero_wallet.get_balance().await.expect("Failed to get monero balance");
 
             let bitcoin_wallet = init_bitcoin_wallet(&config, &seed, env_config, proxy_string).await?;
-            let bitcoin_balance = bitcoin_wallet.balance().await?;
-            tracing::info!(%bitcoin_balance, "Bitcoin wallet balance");
+            let bitcoin_balance = bitcoin_wallet.balance().await.expect("Failed to get bitcoin balance").to_sat();
 
             let ws_url = if tor_port != 0u16 { "ws://7e6egbawekbkxzkv4244pqeqgoo4axko2imgjbedwnn6s5yb6b7oliqd.onion/ws" } else { "wss://ws.featherwallet.org/ws" };
             let kraken_price_updates = kraken::connect(Url::parse(ws_url)?, tor_port)?;
@@ -171,6 +149,8 @@ async fn main() -> Result<()> {
                 tor_port
             ).await?;
 
+            let asb_peer_id = &mut swarm.local_peer_id().clone().to_string();
+
             for listen in config.network.listen.clone() {
                 Swarm::listen_on(&mut swarm, listen.clone())
                     .with_context(|| format!("Failed to listen on network interface {}", listen))?;
@@ -178,7 +158,9 @@ async fn main() -> Result<()> {
 
             tracing::info!(peer_id = %swarm.local_peer_id(), "Network layer initialized");
 
+            let mut multiaddr = String::new();
             for external_address in config.network.external_addresses {
+                multiaddr = external_address.clone().to_string();
                 let _ = Swarm::add_external_address(
                     &mut swarm,
                     external_address,
@@ -215,6 +197,8 @@ async fn main() -> Result<()> {
                     });
                 }
             });
+
+            tracing::info!(%asb_peer_id, %multiaddr, %monero_balance.balance, %monero_balance.unlocked_balance, %monero_address, %bitcoin_balance, "ASB_INITIALIZED");
 
             event_loop.run().await;
         }

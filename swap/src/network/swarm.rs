@@ -29,7 +29,7 @@ where
         None
     };
 
-    let identity = seed.derive_libp2p_identity();
+    let identity = seed.derive_libp2p_identity_asb();
 
     let rendezvous_nodes = rendezvous_addrs
         .iter()

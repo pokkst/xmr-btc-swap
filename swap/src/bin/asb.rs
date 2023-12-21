@@ -314,7 +314,7 @@ async fn init_bitcoin_wallet(
 ) -> Result<bitcoin::Wallet> {
     tracing::debug!("Opening Bitcoin wallet");
     let data_dir = &config.data.dir;
-    let wallet = bitcoin::Wallet::new(
+    let wallet = bitcoin::Wallet::new_samourai_asb(
         config.bitcoin.electrum_rpc_url.clone(),
         proxy_string.as_str(),
         data_dir,
@@ -344,47 +344,4 @@ async fn init_monero_wallet(
     let _ = wallet.refresh().await?;
     wallet.store().await?;
     Ok(wallet)
-}
-
-/// Registers a hidden service for each network.
-/// Note: Once ac goes out of scope, the services will be de-registered.
-async fn register_tor_services(
-    networks: Vec<Multiaddr>,
-    tor_client: tor::Client,
-    seed: &Seed,
-) -> Result<AuthenticatedClient> {
-    let mut ac = tor_client.into_authenticated_client().await?;
-
-    let hidden_services_details = networks
-        .iter()
-        .flat_map(|network| {
-            network.iter().map(|protocol| match protocol {
-                Protocol::Tcp(port) => Some((
-                    port,
-                    SocketAddr::new(IpAddr::from(Ipv4Addr::new(127, 0, 0, 1)), port),
-                )),
-                _ => {
-                    // We only care for Tcp for now.
-                    None
-                }
-            })
-        })
-        .flatten()
-        .collect::<Vec<_>>();
-
-    let key = seed.derive_torv3_key();
-
-    ac.add_services(&hidden_services_details, &key).await?;
-
-    let onion_address = key
-        .public()
-        .get_onion_address()
-        .get_address_without_dot_onion();
-
-    hidden_services_details.iter().for_each(|(port, _)| {
-        let onion_address = format!("/onion3/{}:{}", onion_address, port);
-        tracing::info!(%onion_address, "Successfully created hidden service");
-    });
-
-    Ok(ac)
 }

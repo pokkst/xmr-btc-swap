@@ -176,7 +176,7 @@ pub struct WalletRpc {
 }
 
 pub async fn get_tor<T: IntoUrl>(url: T, proxy_string: String) -> reqwest::Result<Response> {
-    reqwest::Client::builder().proxy(Proxy::https(format!("socks5://{}", proxy_string)).unwrap()).build()?.get(url).send().await
+    reqwest::Client::builder().proxy(Proxy::https(format!("socks5h://{}", proxy_string)).unwrap()).build()?.get(url).send().await
 }
 
 impl WalletRpc {
